@@ -1,0 +1,4 @@
+/Users/caleb/repos/gameengine/build/CMakeFiles/gameengine.dir
+/Users/caleb/repos/gameengine/build/CMakeFiles/gameengine_metal_shaders.dir
+/Users/caleb/repos/gameengine/build/CMakeFiles/edit_cache.dir
+/Users/caleb/repos/gameengine/build/CMakeFiles/rebuild_cache.dir

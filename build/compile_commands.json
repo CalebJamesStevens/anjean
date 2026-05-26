@@ -1,0 +1,38 @@
+[
+{
+  "directory": "/Users/caleb/repos/gameengine/build",
+  "command": "/usr/bin/c++ -DANJEAN_METAL_SHADER_LIBRARY=\\\"/Users/caleb/repos/gameengine/build/shaders/default.metallib\\\" -DANJEAN_PLATFORM_MACOS=1 -DANJEAN_RENDERER_METAL=1 -I/Users/caleb/repos/gameengine/external/metal-cpp -I/opt/homebrew/include -std=gnu++17 -arch arm64 -o CMakeFiles/gameengine.dir/src/main.cpp.o -c /Users/caleb/repos/gameengine/src/main.cpp",
+  "file": "/Users/caleb/repos/gameengine/src/main.cpp",
+  "output": "CMakeFiles/gameengine.dir/src/main.cpp.o"
+},
+{
+  "directory": "/Users/caleb/repos/gameengine/build",
+  "command": "/usr/bin/c++ -DANJEAN_METAL_SHADER_LIBRARY=\\\"/Users/caleb/repos/gameengine/build/shaders/default.metallib\\\" -DANJEAN_PLATFORM_MACOS=1 -DANJEAN_RENDERER_METAL=1 -I/Users/caleb/repos/gameengine/external/metal-cpp -I/opt/homebrew/include -std=gnu++17 -arch arm64 -o CMakeFiles/gameengine.dir/src/window/Window.cpp.o -c /Users/caleb/repos/gameengine/src/window/Window.cpp",
+  "file": "/Users/caleb/repos/gameengine/src/window/Window.cpp",
+  "output": "CMakeFiles/gameengine.dir/src/window/Window.cpp.o"
+},
+{
+  "directory": "/Users/caleb/repos/gameengine/build",
+  "command": "/usr/bin/c++ -DANJEAN_METAL_SHADER_LIBRARY=\\\"/Users/caleb/repos/gameengine/build/shaders/default.metallib\\\" -DANJEAN_PLATFORM_MACOS=1 -DANJEAN_RENDERER_METAL=1 -I/Users/caleb/repos/gameengine/external/metal-cpp -I/opt/homebrew/include -std=gnu++17 -arch arm64 -o CMakeFiles/gameengine.dir/src/rendering/Renderer.cpp.o -c /Users/caleb/repos/gameengine/src/rendering/Renderer.cpp",
+  "file": "/Users/caleb/repos/gameengine/src/rendering/Renderer.cpp",
+  "output": "CMakeFiles/gameengine.dir/src/rendering/Renderer.cpp.o"
+},
+{
+  "directory": "/Users/caleb/repos/gameengine/build",
+  "command": "/usr/bin/c++ -DANJEAN_METAL_SHADER_LIBRARY=\\\"/Users/caleb/repos/gameengine/build/shaders/default.metallib\\\" -DANJEAN_PLATFORM_MACOS=1 -DANJEAN_RENDERER_METAL=1 -I/Users/caleb/repos/gameengine/external/metal-cpp -I/opt/homebrew/include -std=gnu++17 -arch arm64 -o CMakeFiles/gameengine.dir/src/rendering/RendererBackendFactory.cpp.o -c /Users/caleb/repos/gameengine/src/rendering/RendererBackendFactory.cpp",
+  "file": "/Users/caleb/repos/gameengine/src/rendering/RendererBackendFactory.cpp",
+  "output": "CMakeFiles/gameengine.dir/src/rendering/RendererBackendFactory.cpp.o"
+},
+{
+  "directory": "/Users/caleb/repos/gameengine/build",
+  "command": "/usr/bin/c++ -DANJEAN_METAL_SHADER_LIBRARY=\\\"/Users/caleb/repos/gameengine/build/shaders/default.metallib\\\" -DANJEAN_PLATFORM_MACOS=1 -DANJEAN_RENDERER_METAL=1 -I/Users/caleb/repos/gameengine/external/metal-cpp -I/opt/homebrew/include -std=gnu++17 -arch arm64 -o CMakeFiles/gameengine.dir/src/rendering/backends/metal/MetalRendererBackend.cpp.o -c /Users/caleb/repos/gameengine/src/rendering/backends/metal/MetalRendererBackend.cpp",
+  "file": "/Users/caleb/repos/gameengine/src/rendering/backends/metal/MetalRendererBackend.cpp",
+  "output": "CMakeFiles/gameengine.dir/src/rendering/backends/metal/MetalRendererBackend.cpp.o"
+},
+{
+  "directory": "/Users/caleb/repos/gameengine/build",
+  "command": "/usr/bin/c++ -DANJEAN_METAL_SHADER_LIBRARY=\\\"/Users/caleb/repos/gameengine/build/shaders/default.metallib\\\" -DANJEAN_PLATFORM_MACOS=1 -DANJEAN_RENDERER_METAL=1 -I/Users/caleb/repos/gameengine/external/metal-cpp -I/opt/homebrew/include -std=gnu++17 -arch arm64 -o CMakeFiles/gameengine.dir/src/rendering/backends/metal/MetalCppImplementation.cpp.o -c /Users/caleb/repos/gameengine/src/rendering/backends/metal/MetalCppImplementation.cpp",
+  "file": "/Users/caleb/repos/gameengine/src/rendering/backends/metal/MetalCppImplementation.cpp",
+  "output": "CMakeFiles/gameengine.dir/src/rendering/backends/metal/MetalCppImplementation.cpp.o"
+}
+]
