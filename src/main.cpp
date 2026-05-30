@@ -114,7 +114,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[])
         return SDL_APP_FAILURE;
     }
 
-    auto* as = new AppState();
+    auto* as = new Core::AppState();
 
     *appstate = as;
 
@@ -122,6 +122,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[])
 
     auto projectRoot = std::filesystem::current_path();
     std::cout << "Project root: " << projectRoot << std::endl;
+    std::cout << "File: " << argv[6] << std::endl;
 
     if (argc > 1)
     {
@@ -240,15 +241,15 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[])
             vertexCount
         );
         
-        as->camera = std::make_unique<GameObject>();
+        as->camera = std::make_unique<Core::GameObject>();
 
-        as->cube1 = std::make_unique<GameObject>();
+        as->cube1 = std::make_unique<Core::GameObject>();
         as->cube1->mesh = as->demoMesh;
         as->cube1->transform.position.x = 0.0f;
         as->cube1->transform.position.y = 0.0f;
         as->cube1->transform.position.z = 0.0f;
         
-        as->cube2 = std::make_unique<GameObject>();
+        as->cube2 = std::make_unique<Core::GameObject>();
         as->cube2->mesh = as->demoMesh;
         as->cube2->transform.position.x = 0.6f;
         as->cube2->transform.position.y = 0.0f;
@@ -272,9 +273,12 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[])
 float rotationY = 0.0f;
 SDL_AppResult SDL_AppIterate(void* appstate)
 {
-    auto* as = static_cast<AppState*>(appstate);
+    auto* as = static_cast<Core::AppState*>(appstate);
 
     const Uint64 now = SDL_GetTicks();
+
+
+    
     
     while ((now - as->last_step) >= STEP_RATE_IN_MILLISECONDS)
     {
@@ -301,15 +305,25 @@ SDL_AppResult SDL_AppIterate(void* appstate)
 
     as->cube2->transform.rotation.y = rotationY;
     
-    as->cameraMatrix= {
-      simd_make_float4(1,0,0,0),
-      simd_make_float4(0,1,0,0),
-      simd_make_float4(0,0,1,0),
-      simd_make_float4(-as->cameraPos[0],-as->cameraPos[1],-as->cameraPos[2],1)
-    };
+    as->cameraMatrix= matrix_multiply(
+      matrix_multiply({
+          simd_make_float4(1,0,0,0),
+          simd_make_float4(0,1,0,0),
+          simd_make_float4(0,0,1,0),
+          simd_make_float4(-as->cameraPos[0],-as->cameraPos[1],-as->cameraPos[2],1)
+        }, 
+        makeRotationY(0)
+      ),
+      {
+        simd_make_float4(1,0,0,0),
+        simd_make_float4(0,1,0,0),
+        simd_make_float4(0,0,1,0),
+        simd_make_float4(0,0,0,1)
+      }
+    );
     
     as->renderer->beginFrame({ 0.1f, 0.1f, 0.12f, 1.0f });
-    for (GameObject* gO : as->gameObjectsToRender) {
+    for (Core::GameObject* gO : as->gameObjectsToRender) {
       ObjectUniformHandle oUH1;
       oUH1.modelTranslation = {
         simd_make_float4(1,0,0,0),
@@ -343,10 +357,16 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event)
 
     switch (event->type)
     {
+        case SDL_EVENT_MOUSE_MOTION:
+            std::cout << "Mouse Motion Detected - "
+                << "x: " << event->motion.x
+                << ", y: " << event->motion.y << '\n' << std::endl;
+            break;
         case SDL_EVENT_QUIT:
             return SDL_APP_SUCCESS;
 
         default:
+            std::cout << event->type;
             break;
     }
 
@@ -359,7 +379,7 @@ void SDL_AppQuit(void* appstate, SDL_AppResult result)
 
     if (appstate != nullptr)
     {
-        auto* as = static_cast<AppState*>(appstate);
+        auto* as = static_cast<Core::AppState*>(appstate);
         delete as;
     }
 

@@ -2,31 +2,20 @@
 
 #include <SDL3/SDL.h>
 #include <memory>
+#include <string>
 
 #include "../../rendering/RenderTypes.h"
+#include "CoreTypes.h"
 
-namespace Anjean
+namespace Anjean::Core
 {
-
-    struct Vec3
-    {
-        float x = 0.0f;
-        float y = 0.0f;
-        float z = 0.0f;
-    };
-
-    struct Transform 
-    {
-        Vec3 position;
-        Vec3 rotation;
-        Vec3 scale = { 1.0f, 1.0f, 1.0f };
-    };
-
-    class GameObject final
+    class GameObject
     {
       public:
         Transform transform;
         Mesh mesh;
-        ObjectUniformHandle objectUniformHandle;
+        virtual GameObjectType getGameObjectType(){
+          return ANJEAN_GAMEOBJECT;
+        };
     };
 }

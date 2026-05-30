@@ -5,18 +5,21 @@
 
 #include "../rendering/RenderTypes.h"
 
-namespace Anjean
+namespace Anjean {
+  class Window;
+  class Renderer;
+}
+
+namespace Anjean::Core
 {
-    class Window;
-    class Renderer;
     class GameObject;
 
     struct AppState
     {
         Uint64 last_step = 0;
 
-        std::unique_ptr<Window> window;
-        std::unique_ptr<Renderer> renderer;
+        std::unique_ptr<Anjean::Window> window;
+        std::unique_ptr<Anjean::Renderer> renderer;
 
         PipelineHandle basicColorPipeline;
         TextureHandle demoTexture;
