@@ -21,14 +21,28 @@ namespace Anjean
         m_backend->endFrame();
     }
     
-    bool Renderer::renderRect(Renderer *renderer, const Rect *rect)
+    BufferHandle Renderer::createBuffer(const BufferDesc& desc)
     {
-        m_backend->endFrame();
-        return true;
+        return m_backend->createBuffer(desc);
+    }
+    
+    TextureHandle Renderer::createTexture(TextureDesc& desc)
+    {
+        return m_backend->createTexture(desc);
     }
 
-    void Renderer::drawTestTriangle()
+    PipelineHandle Renderer::createPipeline(const PipelineDesc& desc)
     {
-        m_backend->drawTestTriangle();
+        return m_backend->createPipeline(desc);
+    }
+
+    void Renderer::draw(const DrawCommand& command)
+    {
+        m_backend->draw(command);
+    }
+    
+    void Renderer::drawSprite(const PipelineHandle& pPipeline, const Mesh& pMesh, const TextureHandle& pTexture, const ObjectUniformHandle& pObjectUniform)
+    {
+        m_backend->drawSprite(pPipeline, pMesh, pTexture, pObjectUniform);
     }
 }

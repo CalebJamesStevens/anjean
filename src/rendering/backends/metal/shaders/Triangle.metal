@@ -1,7 +1,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
-struct VertexIn
+struct Vertex2D
 {
     float4 position;
     float4 color;
@@ -14,15 +14,16 @@ struct VertexOut
 };
 
 vertex VertexOut vertex_shader(
-    uint id [[vertex_id]],
-    constant VertexIn* vertices [[buffer(0)]]
+    uint vertexId [[vertex_id]],
+    const device Vertex2D* vertices [[buffer(0)]]
 )
 {
-    VertexIn v = vertices[id];
+    Vertex2D v = vertices[vertexId];
 
     VertexOut out;
     out.position = v.position;
     out.color = v.color;
+
     return out;
 }
 

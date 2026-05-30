@@ -25,33 +25,43 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_sources(gameengine PRIVATE
         src/rendering/backends/metal/MetalRendererBackend.cpp
         src/rendering/backends/metal/MetalCppImplementation.cpp
+        src/vendor/stb_image.cpp
     )
 
     target_include_directories(gameengine PRIVATE
         ${CMAKE_SOURCE_DIR}/external/metal-cpp
+        ${CMAKE_SOURCE_DIR}/external/stb
     )
+
+    set(METAL_SHADER_DIR ${CMAKE_BINARY_DIR}/shaders)
 
     set(METAL_SHADER_SOURCE
         ${CMAKE_SOURCE_DIR}/src/rendering/backends/metal/shaders/Triangle.metal
+        ${CMAKE_SOURCE_DIR}/src/rendering/backends/metal/shaders/Sprite2D.metal
     )
 
-    set(METAL_SHADER_AIR
-        ${CMAKE_BINARY_DIR}/shaders/Triangle.air
-    )
+    set(METAL_SHADER_AIR)
 
-    set(METAL_SHADER_LIB
-        ${CMAKE_BINARY_DIR}/shaders/default.metallib
-    )
+    foreach(METAL_FILE ${METAL_SHADER_SOURCE})
+        get_filename_component(METAL_NAME ${METAL_FILE} NAME_WE)
 
-    add_custom_command(
-        OUTPUT ${METAL_SHADER_AIR}
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/shaders
-        COMMAND xcrun -sdk macosx metal
-            -c ${METAL_SHADER_SOURCE}
-            -o ${METAL_SHADER_AIR}
-        DEPENDS ${METAL_SHADER_SOURCE}
-        COMMENT "Compiling Metal shader to AIR"
-    )
+        set(AIR_FILE ${METAL_SHADER_DIR}/${METAL_NAME}.air)
+
+        add_custom_command(
+            OUTPUT ${AIR_FILE}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${METAL_SHADER_DIR}
+            COMMAND xcrun -sdk macosx metal
+                -c ${METAL_FILE}
+                -o ${AIR_FILE}
+            DEPENDS ${METAL_FILE}
+            COMMENT "Compiling ${METAL_NAME}.metal to AIR"
+            VERBATIM
+        )
+
+        list(APPEND METAL_SHADER_AIR ${AIR_FILE})
+    endforeach()
+
+    set(METAL_SHADER_LIB ${METAL_SHADER_DIR}/default.metallib)
 
     add_custom_command(
         OUTPUT ${METAL_SHADER_LIB}
@@ -60,6 +70,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
             -o ${METAL_SHADER_LIB}
         DEPENDS ${METAL_SHADER_AIR}
         COMMENT "Linking Metal shader library"
+        VERBATIM
     )
 
     add_custom_target(gameengine_metal_shaders

@@ -1,5 +1,9 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+#include <simd/simd.h>
+
 namespace Anjean
 {
     struct Color
@@ -10,9 +14,81 @@ namespace Anjean
         float a = 1.0f;
     };
 
-    struct Rect
+    struct ObjectUniformHandle
     {
-        int x, y, w, h;
+        simd_float4x4 model;
+        simd_float4x4 modelTranslation;
+        simd_float4x4 modelScale;
+        simd_float4x4 modelRot;
+        simd_float4x4 viewProjection;
+    };
+
+    struct BufferHandle
+    {
+        std::uint32_t id = 0;
+    };
+    
+    struct TextureHandle
+    {
+        std::uint32_t id = 0;
+    };
+
+    struct PipelineHandle
+    {
+        std::uint32_t id = 0;
+    };
+
+    struct Vertex2D
+    {
+        float position[4];
+        float color[4];
+    };
+    
+    struct TexturedVertex2D
+    {
+        float position[2];
+        float textureCoordinate[2];
+    };
+    
+    struct TexturedVertex3D
+    {
+        float position[3];
+        float textureCoordinate[2];
+    };
+
+    struct Mesh
+    {
+        BufferHandle vertexBuffer;
+        std::uint32_t vertexCount = 0;
+
+    };
+
+    struct BufferDesc
+    {
+        const void* data = nullptr;
+        std::size_t size = 0;
+    };
+    
+    struct TextureDesc
+    {
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+        const char* filename = nullptr;
+        std::size_t size = 0;
+    };
+
+    struct PipelineDesc
+    {
+        const char* vertexFunction = nullptr;
+        const char* fragmentFunction = nullptr;
+        const char* debugName = "Unnamed Pipeline";
+    };
+
+    struct DrawCommand
+    {
+        PipelineHandle pipeline;
+        Mesh mesh;
     };
 
     enum class GraphicsAPI
