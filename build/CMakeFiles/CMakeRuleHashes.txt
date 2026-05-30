@@ -1,4 +1,0 @@
-# Hashes of file build rules.
-18baa210d8758766e30a0838e73f033f CMakeFiles/gameengine_metal_shaders
-f0efc90b316a7af66f3888e6ad1ed380 shaders/Triangle.air
-d0d51390f75a91e8a8bb938387641bf1 shaders/default.metallib
