@@ -3,6 +3,7 @@
 #include "../../../runtime/RuntimeTypes.h"
 
 #include <SDL3/SDL_metal.h>
+#include <chrono>
 
 #include <Foundation/Foundation.hpp>
 #include <QuartzCore/QuartzCore.hpp>
@@ -42,6 +43,12 @@ namespace Anjean::Rendering
         MTL::ResidencySet* residencySet = nullptr;
         MTL::Texture* depthTexture = nullptr;
         MTL::DepthStencilState* depthState = nullptr;
+        using Clock = std::chrono::steady_clock;
+
+        Clock::time_point startTime = Clock::now();
+        float elapsedSeconds = 0.0f;
+
+        MTL::Buffer* timeBuffer = nullptr;
 
         BufferHandle addBuffer(MTL::Buffer* buffer)
         {
@@ -175,11 +182,18 @@ namespace Anjean::Rendering
                 layer = nullptr;
             }
 
+            if (timeBuffer)
+            {
+                timeBuffer->release();
+                timeBuffer = nullptr;
+            }
+
             if (device)
             {
                 device->release();
                 device = nullptr;
             }
+
 
         }
 
@@ -237,6 +251,19 @@ namespace Anjean::Rendering
             pipelineDesc->setLabel(MakeNSString(desc.debugName));
             pipelineDesc->setVertexFunctionDescriptor(vertexFunction);
             pipelineDesc->setFragmentFunctionDescriptor(fragmentFunction);
+            auto* colorAttachment = pipelineDesc->colorAttachments()->object(0);
+
+            colorAttachment->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
+            colorAttachment->setBlendingState(MTL4::BlendStateEnabled);
+
+            colorAttachment->setRgbBlendOperation(MTL::BlendOperationAdd);
+            colorAttachment->setAlphaBlendOperation(MTL::BlendOperationAdd);
+
+            colorAttachment->setSourceRGBBlendFactor(MTL::BlendFactorSourceAlpha);
+            colorAttachment->setDestinationRGBBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
+
+            colorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorOne);
+            colorAttachment->setDestinationAlphaBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
 
             pipelineDesc
                 ->colorAttachments()
@@ -291,12 +318,6 @@ namespace Anjean::Rendering
     
     TextureHandle MetalRendererBackend::createTexture(TextureDesc& desc)
     {
-        std::cout
-        << "Width, Height: "
-        << static_cast<int>(desc.width) << ", "
-        << static_cast<int>(desc.height) << ", "
-        << static_cast<int>(desc.channels) << ", "
-        << std::endl;
         stbi_uc* pixels = stbi_load(
             desc.filename,
             &(desc.width),
@@ -343,12 +364,7 @@ namespace Anjean::Rendering
 
         NS::UInteger bytesPerRow = static_cast<NS::UInteger>(4 * (desc.width));
         texture->replaceRegion(region,0,pixels,bytesPerRow);
-        std::cout
-        << "Width, Height: "
-        << static_cast<int>(desc.width) << ", "
-        << static_cast<int>(desc.height) << ", "
-        << static_cast<int>(desc.channels) << ", "
-        << std::endl;
+
 
         // stbi_image_free(pixels);
         stbi_image_free(pixels);
@@ -385,8 +401,8 @@ namespace Anjean::Rendering
 
         depthTexDesc->setTextureType(MTL::TextureType2D);
         depthTexDesc->setPixelFormat(MTL::PixelFormatDepth32Float);
-        depthTexDesc->setWidth(1200);
-        depthTexDesc->setHeight(1000);
+        depthTexDesc->setWidth(1280);
+        depthTexDesc->setHeight(880);
         depthTexDesc->setStorageMode(MTL::StorageModePrivate);
         depthTexDesc->setUsage(MTL::TextureUsageRenderTarget);
 
@@ -453,6 +469,17 @@ namespace Anjean::Rendering
             throw std::runtime_error(message);
         }
 
+        m_impl->timeBuffer = m_impl->device->newBuffer(
+            sizeof(float),
+            MTL::ResourceStorageModeShared
+        );
+
+        if (!m_impl->timeBuffer)
+        {
+            throw std::runtime_error("Failed to create time buffer.");
+        }
+
+        m_impl->residencySet->addAllocation(m_impl->timeBuffer);
         m_impl->residencySet->commit();
 
         m_impl->commandQueue->addResidencySet(m_impl->residencySet);
@@ -543,6 +570,14 @@ namespace Anjean::Rendering
             m_impl->commandBuffer->renderCommandEncoder(passDesc);
 
         passDesc->release();
+
+        auto now = Impl::Clock::now();
+
+        m_impl->elapsedSeconds =
+            std::chrono::duration<float>(now - m_impl->startTime).count();
+
+        auto* timePtr = static_cast<float*>(m_impl->timeBuffer->contents());
+        *timePtr = m_impl->elapsedSeconds;
 
         if (!m_impl->renderEncoder)
         {
@@ -649,12 +684,12 @@ namespace Anjean::Rendering
         {
             throw std::runtime_error("Failed to create Metal buffer.");
         }
-
+        
         m_impl->residencySet->addAllocation(objectUniformBuffer);
         m_impl->residencySet->commit();
 
         auto* vertexTableDesc = MTL4::ArgumentTableDescriptor::alloc()->init();
-        vertexTableDesc->setMaxBufferBindCount(2);
+        vertexTableDesc->setMaxBufferBindCount(3);
 
         MTL4::ArgumentTable* vertexTable =
             m_impl->device->newArgumentTable(vertexTableDesc, nullptr);
@@ -668,6 +703,7 @@ namespace Anjean::Rendering
 
         auto* fragmentTableDesc = MTL4::ArgumentTableDescriptor::alloc()->init();
         fragmentTableDesc->setMaxTextureBindCount(1);
+        fragmentTableDesc->setMaxBufferBindCount(1);
 
         MTL4::ArgumentTable* fragmentTable = nullptr;
 
@@ -685,8 +721,10 @@ namespace Anjean::Rendering
 
         vertexTable->setAddress(vertextBuff->gpuAddress(), 0);
         vertexTable->setAddress(objectUniformBuffer->gpuAddress(), 1);
+        vertexTable->setAddress(m_impl->timeBuffer->gpuAddress(), 2);
         if (texture) {
           fragmentTable->setTexture(texture->gpuResourceID(), 0);
+          fragmentTable->setAddress(m_impl->timeBuffer->gpuAddress(), 0);
         }
 
         m_impl->renderEncoder->setRenderPipelineState(pipeline);
@@ -707,6 +745,7 @@ namespace Anjean::Rendering
 
         vertexTable->release();
         fragmentTable->release();
+        // objectUniformBuffer->release();
     }
 
 

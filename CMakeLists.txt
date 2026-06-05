@@ -8,25 +8,76 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(SDL3 REQUIRED CONFIG)
 
+# -----------------------------
+# Shared engine/runtime code
+# -----------------------------
+
+add_library(anjean_core STATIC
+    src/runtime/Runtime.cpp
+    src/runtime/input/InputManager.cpp
+    src/runtime/scripting/ScriptingEngine.cpp
+)
+
+set_target_properties(anjean_core PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+)
+
+target_include_directories(anjean_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(anjean_core PUBLIC
+    SDL3::SDL3
+)
+
+# -----------------------------
+# Native C API for C# P/Invoke
+# Produces: libAnjean.Native.dylib
+# -----------------------------
+
+add_library(anjean_native SHARED
+    src/runtime/scripting/NativeBindings.cpp
+)
+
+set_target_properties(anjean_native PROPERTIES
+    OUTPUT_NAME "Anjean.Native"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+)
+
+target_include_directories(anjean_native PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(anjean_native PRIVATE
+    anjean_core
+)
+
+# -----------------------------
+# Main executable
+# -----------------------------
+
 add_executable(anjean)
 
 target_sources(anjean PRIVATE
     src/main.cpp
+    src/init.cpp
 
     src/window/Window.cpp
-
     src/Orchestrator/Orchestrator.cpp
-
-    src/runtime/Runtime.cpp
-    src/runtime/input/InputManager.cpp
 
     src/rendering/Renderer.cpp
     src/rendering/RendererBackendFactory.cpp
     src/rendering/Utilities.cpp
 )
 
+target_include_directories(anjean PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
 target_link_libraries(anjean PRIVATE
-    SDL3::SDL3
+    anjean_core
+    anjean_native
 )
 
 target_compile_options(anjean PRIVATE
@@ -40,6 +91,31 @@ target_link_options(anjean PRIVATE
     -fsanitize=address
 )
 
+target_compile_options(anjean_core PRIVATE
+    -g
+    -O0
+    -fsanitize=address
+    -fno-omit-frame-pointer
+)
+
+target_link_options(anjean_core PRIVATE
+    -fsanitize=address
+)
+
+target_compile_options(anjean_native PRIVATE
+    -g
+    -O0
+    -fsanitize=address
+    -fno-omit-frame-pointer
+)
+
+target_link_options(anjean_native PRIVATE
+    -fsanitize=address
+)
+
+# -----------------------------
+# macOS / Metal backend
+# -----------------------------
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_sources(anjean PRIVATE
@@ -49,8 +125,25 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     )
 
     target_include_directories(anjean PRIVATE
+        /usr/local/share/dotnet/packs/Microsoft.NETCore.App.Host.osx-arm64/8.0.1/runtimes/osx-arm64/native
+        /usr/local/share/dotnet/x64/packs/Microsoft.NETCore.App.Host.osx-x64/8.0.1/runtimes/osx-x64/native
         ${CMAKE_SOURCE_DIR}/external/metal-cpp
         ${CMAKE_SOURCE_DIR}/external/stb
+    )
+
+    target_include_directories(anjean_core PUBLIC
+        /usr/local/share/dotnet/packs/Microsoft.NETCore.App.Host.osx-arm64/8.0.1/runtimes/osx-arm64/native
+        /usr/local/share/dotnet/x64/packs/Microsoft.NETCore.App.Host.osx-x64/8.0.1/runtimes/osx-x64/native
+    )
+
+    target_link_libraries(anjean PRIVATE
+        "-framework Metal"
+        "-framework QuartzCore"
+        "-framework Foundation"
+    )
+
+    target_link_libraries(anjean_core PUBLIC
+        /usr/local/share/dotnet/packs/Microsoft.NETCore.App.Host.osx-arm64/8.0.1/runtimes/osx-arm64/native/libnethost.a
     )
 
     set(METAL_SHADER_DIR ${CMAKE_BINARY_DIR}/shaders)
@@ -105,11 +198,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         "ANJEAN_METAL_SHADER_LIBRARY=\"${METAL_SHADER_LIB}\""
     )
 
-    target_link_libraries(anjean PRIVATE
-        "-framework Metal"
-        "-framework QuartzCore"
-        "-framework Foundation"
-    )
 else()
     target_sources(anjean PRIVATE
         src/rendering/backends/vulkan/VulkanRendererBackend.cpp

@@ -9,6 +9,7 @@
 #include <string>
 
 #include "Orchestrator/Orchestrator.hpp"
+#include "init.h"
 
 using namespace Anjean;
 
@@ -30,17 +31,39 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[])
 
     if (argc > 1)
     {
+        if (std::string(argv[1]) == "init")
+        {
+          try
+            {
+                if (argc >= 3)
+                {
+                    Anjean::initProject(argv[2]);
+                }
+                else
+                {
+                    Anjean::initProject();
+                }
+
+                return SDL_APP_SUCCESS;
+            }
+            catch (const std::exception& e)
+            {
+                std::cerr << "Init failed: " << e.what() << std::endl;
+                return SDL_APP_FAILURE;
+            }
+        }else {
+
+          auto* orchestrator = new Orchestrator::Orchestrator();
+          *appstate = orchestrator;
+        }
         std::cout << "Command: " << argv[1] << std::endl;
-    }
+    } 
 
     // int screenWidth = std::stoi(argv[2]);
     // int screenHeight = std::stoi(argv[3]);
     // float textWidth = std::stof(argv[4]);
     // float textHeight = std::stof(argv[5]);
     // const char* filename = argv[6];
-
-    auto* orchestrator = new Orchestrator::Orchestrator();
-    *appstate = orchestrator;
     return SDL_APP_CONTINUE;
 }
 
@@ -82,18 +105,16 @@ SDL_AppResult SDL_AppIterate(void* appstate)
 
 SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event)
 {
-    // (void)appstate;
+    auto* orchestrator = static_cast<Orchestrator::Orchestrator*>(appstate);
 
-    switch (event->type)
+    if (event->type == SDL_EVENT_QUIT)
     {
-        case SDL_EVENT_MOUSE_MOTION:
-            break;
-        case SDL_EVENT_QUIT:
-            return SDL_APP_SUCCESS;
+        return SDL_APP_SUCCESS;
+    }
 
-        default:
-            std::cout << event->type;
-            break;
+    if (orchestrator)
+    {
+        orchestrator->HandleSDLEvent(*event);
     }
 
     return SDL_APP_CONTINUE;

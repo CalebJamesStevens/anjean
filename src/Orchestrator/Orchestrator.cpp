@@ -10,6 +10,7 @@
 #include "../rendering/Renderer.h"
 #include "../rendering/Utilities.hpp"
 #include "../window/Window.h"
+#include "../runtime/scripting/NativeBindings.h"
 
 namespace Anjean::Orchestrator
 {
@@ -18,37 +19,38 @@ namespace Anjean::Orchestrator
     renderState = RendererState();
 
     /** Temp */
-    Runtime::GameObject testGameObject{};
-    testGameObject.transform.position.x = 0;
-    testGameObject.transform.position.y = 0;
-    testGameObject.transform.position.z = -2;
-    testGameObject.transform.rotation.x = 0;
-    testGameObject.transform.rotation.y = 45;
-    testGameObject.transform.rotation.z = 0;
-    testGameObject.transform.scale.x = 1;
-    testGameObject.transform.scale.y = 1;
-    testGameObject.transform.scale.z = 1;
-    testGameObject.mesh.id = runtime->getAllMeshes().at(0).id;
-    testGameObject.mesh.vertexCount = runtime->getAllMeshes().at(0).vertexCount;
-    testGameObject.mesh.vertices = runtime->getAllMeshes().at(0).vertices;
-    Runtime::Texture tempTexture{};
-    tempTexture.filename="text.png";
-    tempTexture.width=36;
-    tempTexture.height=36;
-    tempTexture.channels=4;
-    testGameObject.texture = tempTexture;
+    // Runtime::GameObject testGameObject{};
+    // testGameObject.transform.position.x = 0;
+    // testGameObject.transform.position.y = 0;
+    // testGameObject.transform.position.z = -2;
+    // testGameObject.transform.rotation.x = 0;
+    // testGameObject.transform.rotation.y = 45;
+    // testGameObject.transform.rotation.z = 0;
+    // testGameObject.transform.scale.x = 1;
+    // testGameObject.transform.scale.y = 1;
+    // testGameObject.transform.scale.z = 1;
+    // testGameObject.mesh = Runtime::Mesh();
+    // testGameObject.mesh.value().id = runtime->getAllMeshes().at(0).id;
+    // testGameObject.mesh.value().vertexCount = runtime->getAllMeshes().at(0).vertexCount;
+    // testGameObject.mesh.value().vertices = runtime->getAllMeshes().at(0).vertices;
+    // Runtime::Texture tempTexture{};
+    // tempTexture.filename="text.png";
+    // tempTexture.width=36;
+    // tempTexture.height=36;
+    // tempTexture.channels=4;
+    // testGameObject.texture = tempTexture;
 
     // runtime->sceneObjects.emplace_back(std::move(testGameObject));
     // Runtime::GameObject testGameObject{};
 
-  runtime->sceneObjects.emplace_back(testGameObject);
+  // runtime->sceneObjects.emplace_back(testGameObject);
 
     try
     {
         auto window = new Anjean::Window(
             "Anjean",
-            1200.0f,
-            1000.0f,
+            1280.0f,
+            880.0f,
             SDL_WINDOW_RESIZABLE | SDL_WINDOW_METAL
         );
 
@@ -102,7 +104,16 @@ namespace Anjean::Orchestrator
 
   };
 
+  void Orchestrator::Orchestrator::HandleSDLEvent(const SDL_Event& event)
+  {
+      runtime->inputManager.handleSDLEvent(event);
+  }
+
   void Orchestrator::Tick() {
+    runtime->beginTick();
+    runtime->executeTick();
+    
+
     gameObjectsToRender = runtime->getRenderableSceneObjects();
     currentCamera = runtime->getCurrentCamera();
 
@@ -129,7 +140,7 @@ namespace Anjean::Orchestrator
         );
         simd_float4x4 projectionMatrix = Rendering::makePerspective(
             70.0f * M_PI / 180.0f,
-            1200.0f/1000.0f,
+            1280.0f/880.0f,
             0.1f,
             100.0f
         );
@@ -151,10 +162,10 @@ namespace Anjean::Orchestrator
           }
         );
         objectUniformHandle.viewProjection = matrix_multiply(projectionMatrix, cameraMatrix);
-        auto meshIt = renderState.runtimeRendererMeshMap.find(gO.mesh.id);
+        auto meshIt = renderState.runtimeRendererMeshMap.find(gO.mesh.value().id);
 
         if (meshIt == renderState.runtimeRendererMeshMap.end()) {
-            SDL_Log("Mesh id not found: %u", gO.mesh.id);
+            SDL_Log("Mesh id not found: %u", gO.mesh.value().id);
             continue;
         }
 
@@ -178,6 +189,7 @@ namespace Anjean::Orchestrator
       }
       renderer->endFrame();
     }
+    runtime->endTick();
 
   };
 }

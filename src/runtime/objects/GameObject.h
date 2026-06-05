@@ -14,8 +14,8 @@ namespace Anjean::Runtime
       public:
         uint32_t id;
         Transform transform;
-        Mesh mesh;
-        std::optional<Texture> texture;
+        std::optional<Mesh> mesh = std::nullopt;
+        std::optional<Texture> texture = std::nullopt;
 
         virtual GameObjectType getGameObjectType(){
           return ANJEAN_GAMEOBJECT;

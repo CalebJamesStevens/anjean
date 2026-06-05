@@ -4,6 +4,8 @@
 #include "objects/Camera.h"
 #include "objects/Texture.h"
 #include "../Core/Core.h"
+#include "scripting/ScriptingEngine.h"
+
 
 namespace Anjean::Runtime
 {
@@ -12,6 +14,7 @@ namespace Anjean::Runtime
       public:
           Runtime();
           InputManager inputManager;
+          ScriptingEngine scriptingEngine;
           std::vector<GameObject> sceneObjects;
           Camera currentCamera;
           void beginTick();
@@ -21,6 +24,8 @@ namespace Anjean::Runtime
           Camera getCurrentCamera();
           std::vector<Mesh> getAllMeshes();
           std::vector<Texture> getAllTextures();
+          GameObject& createGameObject();
+          GameObject& getGameObjectById(std::uint32_t id);
           
     };
 }

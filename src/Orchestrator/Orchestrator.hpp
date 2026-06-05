@@ -27,6 +27,7 @@ namespace Anjean::Orchestrator {
       void GetRuntimeData();
       void PostToRuntime();
       void PostToRenderer();
+      void HandleSDLEvent(const SDL_Event& event);
       void Tick();
   };
 }

@@ -6,6 +6,43 @@
 #include <queue> 
 
 namespace Anjean::Runtime {
+  enum class Key : int32_t
+{
+    Unknown = 0,
+
+    A = 1,
+    B = 2,
+    C = 3,
+    D = 4,
+    E = 5,
+    F = 6,
+    G = 7,
+    H = 8,
+    I = 9,
+    J = 10,
+    K = 11,
+    L = 12,
+    M = 13,
+    N = 14,
+    O = 15,
+    P = 16,
+    Q = 17,
+    R = 18,
+    S = 19,
+    T = 20,
+    U = 21,
+    V = 22,
+    W = 23,
+    X = 24,
+    Y = 25,
+    Z = 26,
+
+    Space = 27,
+    Escape = 28,
+    Enter = 29,
+
+    Count = 30
+};
   struct MouseState
   {
     float x = 0.0f;
@@ -23,9 +60,24 @@ namespace Anjean::Runtime {
 
     bool movedThisFrame = false;
   };
+  
+  struct KeyState {
+    bool isDown = false;
+  };
+
+  struct KeyboardState
+  {
+    std::array<KeyState, static_cast<std::size_t>(Key::Count)> keys;
+  };
+
+  inline std::size_t toIndex(Key key)
+  {
+      return static_cast<std::size_t>(key);
+  }
 
   struct InputState {
     MouseState mouseState;
+    KeyboardState keyboardState;
   };
   
   struct AnjeanInputEventMouseEvent {
@@ -43,6 +95,11 @@ namespace Anjean::Runtime {
      float xMotion;
      float yMotion;
   };
+  
+  struct AnjeanInputEventKeyboardEvent {
+    Key key = Key::Unknown;
+    bool down = false;
+  };
 
   enum class AnjeanInputEventType
   {
@@ -54,6 +111,7 @@ namespace Anjean::Runtime {
   struct AnjeanInputEvent{
     AnjeanInputEventType type;
     AnjeanInputEventMouseEvent mouseMotion;
+    AnjeanInputEventKeyboardEvent keyboardEvent;
     uint8_t padding[128];
   };
 
@@ -63,5 +121,8 @@ namespace Anjean::Runtime {
       InputState inputState;
       void pollEvents();
       void updateInputState();
+      bool isKeyDown(Key key) const;
+      static Key fromSDLScancode(SDL_Scancode scancode);
+      void handleSDLEvent(const SDL_Event& event);
   };
 }
