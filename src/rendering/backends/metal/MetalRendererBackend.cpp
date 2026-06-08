@@ -439,6 +439,8 @@ namespace Anjean::Rendering
         m_impl->layer->setDevice(m_impl->device);
         m_impl->layer->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
         m_impl->layer->setFramebufferOnly(true);
+        m_impl->layer->setDisplaySyncEnabled(false);
+        m_impl->layer->setMaximumDrawableCount(3);
 
         m_impl->commandQueue = m_impl->device->newMTL4CommandQueue();
 

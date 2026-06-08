@@ -11,6 +11,8 @@ public abstract class GameObject
     public Mesh? Mesh { get; private set; }
     public Texture? Texture { get; private set; }
 
+    public PhysicsBody? PhysicsBody { get; private set; }
+
     public class Props
     {
         protected Props() {}
@@ -23,6 +25,9 @@ public abstract class GameObject
 
         public static readonly PropKey<Texture?> Texture =
             new("GameObject.Texture");
+
+        public static readonly PropKey<PhysicsBodyType?> PhysicsBodyType =
+            new("GameObject.PhysicsBodyType");
     }
 
     public Dictionary<IPropKey, object?> PropValues { get; private set; } = new()
@@ -59,7 +64,63 @@ public abstract class GameObject
             InternalGameObject.SetTexture(Texture);
         }
 
+        PhysicsBodyType? physicsBodyType = GetProp<PhysicsBodyType?>(
+            Props.PhysicsBodyType,
+            null
+        );
+
+        if (physicsBodyType is not null)
+        {
+            PhysicsBody = CreateAndLinkPhysicsBody(physicsBodyType.Value);
+        }
+
         ApplyProps();
+    }
+
+    public PhysicsBody CreateAndLinkPhysicsBody(PhysicsBodyType type)
+    {
+        int createRc = Native.Anjean_PhysicsBody_Create(
+            type,
+            out uint physicsBodyId
+        );
+
+        if (createRc != 0)
+        {
+            throw new InvalidOperationException(
+                $"Failed to create physics body. rc={createRc}"
+            );
+        }
+
+        int linkRc = Native.Anjean_GameObject_SetPhysicsBody(
+            InternalGameObject.Id,
+            physicsBodyId
+        );
+
+        if (linkRc != 0)
+        {
+            throw new InvalidOperationException(
+                $"Failed to link physics body. rc={linkRc}"
+            );
+        }
+
+        return new PhysicsBody(physicsBodyId);
+    }
+
+    public void LinkPhysicsBody(PhysicsBody physicsBody)
+    {
+        int rc = Native.Anjean_GameObject_SetPhysicsBody(
+            InternalGameObject.Id,
+            physicsBody.Id
+        );
+
+        if (rc != 0)
+        {
+            throw new InvalidOperationException(
+                $"Failed to link physics body. rc={rc}"
+            );
+        }
+
+        PhysicsBody = physicsBody;
     }
 
     internal virtual InternalGameObject CreateInternalObject()

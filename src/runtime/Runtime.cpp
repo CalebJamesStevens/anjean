@@ -76,6 +76,74 @@ namespace Anjean::Runtime
         return renderables;
     }
     
+    std::vector<GameObject*> Runtime::getPhysicsAwareSceneObjects()
+    {
+        std::vector<GameObject*> physicsAwareObjects;
+
+        for (auto& object : sceneObjects)
+        {
+            if (object->physicsBodyId.has_value())
+            {
+                physicsAwareObjects.push_back(object.get());
+            }
+        }
+
+        return physicsAwareObjects;
+    }
+
+    PhysicsBody& Runtime::createPhysicsBody(Core::PhysicsBodyType type)
+{
+    auto body = std::make_unique<PhysicsBody>();
+
+    body->id = nextPhysicsBodyId++;
+    body->type = type;
+
+    PhysicsBody& ref = *body;
+    physicsBodies.push_back(std::move(body));
+
+    return ref;
+}
+
+PhysicsBody& Runtime::getPhysicsBodyById(std::uint32_t physicsBodyId)
+{
+    for (auto& body : physicsBodies)
+    {
+        if (body->id == physicsBodyId)
+        {
+            return *body;
+        }
+    }
+
+    throw std::runtime_error("PhysicsBody not found");
+}
+
+void Runtime::setGameObjectPhysicsBody(
+    std::uint32_t gameObjectId,
+    std::uint32_t physicsBodyId
+)
+{
+    GameObject& object = getGameObjectById(gameObjectId);
+
+    // Validate that the body actually exists.
+    getPhysicsBodyById(physicsBodyId);
+
+    object.physicsBodyId = physicsBodyId;
+}
+
+std::uint32_t Runtime::getGameObjectPhysicsBody(
+    std::uint32_t gameObjectId
+)
+{
+    GameObject& object = getGameObjectById(gameObjectId);
+
+    if (!object.physicsBodyId.has_value())
+    {
+        throw std::runtime_error("GameObject has no PhysicsBody");
+    }
+
+    return object.physicsBodyId.value();
+}
+    
     Camera& Runtime::getCurrentCamera()
     {
         if (currentCameraId == 0)

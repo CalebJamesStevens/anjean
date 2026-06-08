@@ -22,9 +22,9 @@ namespace Anjean::Runtime
 
   struct Transform 
   {
-      Vec3 position;
-      Vec3 rotation;
-      Vec3 scale = { 1.0f, 1.0f, 1.0f };
+      Core::Vector3 position;
+      Core::Vector3 rotation;
+      Core::Vector3 scale = { 1.0f, 1.0f, 1.0f };
   };
 
   enum GameObjectType {

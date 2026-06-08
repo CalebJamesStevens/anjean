@@ -27,6 +27,74 @@ internal static class Native
         uint gameObjectId,
         Vec3 position
     );
+    
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_PhysicsBody_GetColliderCount(
+        uint physicsBodyId,
+        out int count
+    );
+
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_PhysicsBody_GetColliderAt(
+        uint physicsBodyId,
+        int index,
+        out ColliderType type,
+        out uint colliderId
+    );
+
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_PhysicsBody_GetVelocity(
+        uint physicsBodyId,
+        out Vec3 outVelocity
+    );
+
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_PhysicsBody_SetVelocity(
+        uint physicsBodyId,
+        Vec3 velocity
+    );
+
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_PhysicsBody_GetForce(
+        uint physicsBodyId,
+        out Vec3 outForce
+    );
+
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_PhysicsBody_SetForce(
+        uint physicsBodyId,
+        Vec3 force
+    );
+
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_PhysicsBody_GetMass(
+        uint physicsBodyId,
+        out float outMass
+    );
+
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_PhysicsBody_SetMass(
+        uint physicsBodyId,
+        float mass
+    );
+
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_PhysicsBody_Create(
+        PhysicsBodyType type,
+        out uint physicsBodyId
+    );
+
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_GameObject_SetPhysicsBody(
+        uint gameObjectId,
+        uint physicsBodyId
+    );
+
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_GameObject_GetPhysicsBody(
+        uint gameObjectId,
+        out uint physicsBodyId
+    );
 
     [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
     internal static extern int Anjean_GameObject_SetMesh(
@@ -72,4 +140,66 @@ internal static class Native
 
     [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
     internal static extern int Anjean_Input_IsKeyDown(KeyCode keyCode);
+
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_PhysicsBody_AddSphereCollider(
+        uint physicsBodyId,
+        Vec3 localCenter,
+        float radius,
+        out uint colliderId
+    );
+
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_SphereCollider_GetRadius(
+        uint physicsBodyId,
+        uint colliderId,
+        out float radius
+    );
+
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_SphereCollider_SetRadius(
+        uint physicsBodyId,
+        uint colliderId,
+        float radius
+    );
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_PhysicsBody_GetType(
+        uint physicsBodyId,
+        out PhysicsBodyType outType
+    );
+
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+internal static extern int Anjean_RectangularPrismCollider_GetLocalCenter(
+    uint physicsBodyId,
+    uint colliderId,
+    out Vec3 outLocalCenter
+);
+
+[DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+internal static extern int Anjean_RectangularPrismCollider_SetLocalCenter(
+    uint physicsBodyId,
+    uint colliderId,
+    Vec3 localCenter
+);
+
+[DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+internal static extern int Anjean_RectangularPrismCollider_GetHalfExtents(
+    uint physicsBodyId,
+    uint colliderId,
+    out Vec3 outHalfExtents
+);
+
+[DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+internal static extern int Anjean_RectangularPrismCollider_SetHalfExtents(
+    uint physicsBodyId,
+    uint colliderId,
+    Vec3 halfExtents
+);
+[DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+internal static extern int Anjean_PhysicsBody_AddRectangularPrismCollider(
+    uint physicsBodyId,
+    Vec3 localCenter,
+    Vec3 halfExtents,
+    out uint colliderId
+);
 }

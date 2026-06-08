@@ -5,6 +5,7 @@
 #include "../runtime/RuntimeTypes.h"
 #include "../runtime/objects/GameObject.h"
 #include "../rendering/Renderer.h"
+#include "../physics/physics.h"
 #include "../Core/Core.h"
 
 namespace Anjean::Orchestrator {
@@ -21,6 +22,7 @@ namespace Anjean::Orchestrator {
       Orchestrator();
       Anjean::Runtime::Runtime* runtime;
       Anjean::Rendering::Renderer* renderer;
+      Anjean::Physics::Physics* physicsWorld;
       std::vector<Runtime::GameObject*> gameObjectsToRender;
       Runtime::Camera currentCamera;
       RendererState renderState;
@@ -36,6 +38,8 @@ namespace Anjean::Orchestrator {
         using Clock = std::chrono::steady_clock;
 
         Clock::time_point lastFrameTime;
+        Clock::time_point lastFpsPrintTime;
+        int framesSinceLastFpsPrint = 0;
 
         double physicsAccumulator = 0.0;
 

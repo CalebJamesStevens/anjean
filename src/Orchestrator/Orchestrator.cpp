@@ -12,13 +12,16 @@
 #include "../rendering/Utilities.hpp"
 #include "../window/Window.h"
 #include "../runtime/scripting/NativeBindings.h"
+#include "../physics/physics.h"
 
 namespace Anjean::Orchestrator
 {
   Orchestrator::Orchestrator() {
     lastFrameTime = Clock::now();
+    lastFpsPrintTime = Clock::now();
 
     runtime = new Anjean::Runtime::Runtime();
+    physicsWorld = new Anjean::Physics::Physics();
     renderState = RendererState();
 
     try
@@ -92,6 +95,21 @@ namespace Anjean::Orchestrator
         now - lastFrameTime
     ).count();
 
+    framesSinceLastFpsPrint++;
+    double fpsPrintDelta = std::chrono::duration<double>(
+        now - lastFpsPrintTime
+    ).count();
+
+    if (fpsPrintDelta >= 1.0)
+    {
+        double fps = framesSinceLastFpsPrint / fpsPrintDelta;
+
+        std::cout << "FPS: " << fps << std::endl;
+
+        framesSinceLastFpsPrint = 0;
+        lastFpsPrintTime = now;
+    }
+
     lastFrameTime = now;
 
     if (frameDelta > 0.25)
@@ -121,7 +139,6 @@ namespace Anjean::Orchestrator
     {
         physicsAccumulator = 0.0;
     }
-
 
     runtime->executeTick();
     
@@ -208,7 +225,72 @@ namespace Anjean::Orchestrator
   void Orchestrator::PhysicsTick(float deltaTime)
   {
       // Later:
-      runtime->executePhysicsTick(deltaTime);
-      // physicsWorld.step(deltaTime);
+     runtime->executePhysicsTick(deltaTime);
+
+    auto objectsToSimulate = runtime->getPhysicsAwareSceneObjects();
+
+    std::vector<Core::PhysicsBodyState> physicsWorldBodies;
+    physicsWorldBodies.reserve(objectsToSimulate.size());
+
+    std::unordered_map<std::uint32_t, Runtime::GameObject*> bodyIdToObject;
+
+    for (auto* obj : objectsToSimulate)
+    {
+        if (!obj->physicsBodyId.has_value())
+        {
+            continue;
+        }
+
+        std::uint32_t physicsBodyId = obj->physicsBodyId.value();
+
+        auto& body = runtime->getPhysicsBodyById(physicsBodyId);
+
+        Core::PhysicsBodyState state{};
+
+        state.id = physicsBodyId;
+
+        // For now, the GameObject transform is the body's world position.
+        state.position = obj->transform.position;
+
+        state.velocity = body.velocity;
+        state.force = body.force;
+        state.mass = body.mass;
+        state.physicsBodyType = body.getPhysicsBodyType();
+        
+        for (auto bodyCollider : body.colliders) {
+          Core::ColliderState colState{};
+          colState.id = bodyCollider.id;
+          colState.localCenter = bodyCollider.localCenter;
+          colState.radius = bodyCollider.radius;
+          colState.halfExtents = bodyCollider.halfExtents;
+          colState.colliderType = bodyCollider.type;
+          state.colliders.emplace_back(colState);
+        }
+
+        physicsWorldBodies.emplace_back(state);
+
+        // Keep explicit link so we can sync the transform after simulation.
+        bodyIdToObject[physicsBodyId] = obj;
+    }
+
+    auto simulatedResults = physicsWorld->Step(deltaTime, physicsWorldBodies);
+
+    for (const Core::PhysicsBodyResult& result : simulatedResults)
+    {
+        auto& body = runtime->getPhysicsBodyById(result.id);
+
+        body.velocity = result.velocity;
+
+        auto it = bodyIdToObject.find(result.id);
+
+        if (it == bodyIdToObject.end())
+        {
+            continue;
+        }
+
+        Runtime::GameObject* obj = it->second;
+
+        obj->transform.position = result.position;
+    }
   }
 }

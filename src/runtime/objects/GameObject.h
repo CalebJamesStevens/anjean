@@ -5,6 +5,7 @@
 
 #include "../RuntimeTypes.h"
 #include "Texture.h"
+#include "Collider.h"
 
 namespace Anjean::Runtime
 {
@@ -19,6 +20,8 @@ namespace Anjean::Runtime
 
         std::optional<Mesh> mesh = std::nullopt;
         std::optional<Texture> texture = std::nullopt;
+        std::optional<std::uint32_t> physicsBodyId;
+        std::optional<Collider> collider = std::nullopt;
 
         virtual GameObjectType getGameObjectType() const
         {
