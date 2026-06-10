@@ -21,16 +21,55 @@ namespace Anjean::Runtime
             1
         );
 
+        namespace fs = std::filesystem;
+
+        fs::path projectRoot = fs::current_path();
+
+        fs::path anjeanDir = projectRoot / ".anjean";
+        fs::path sdkDir = anjeanDir / "sdk";
+
+        fs::path runtimeConfig =
+            sdkDir / "Anjean.Scripting.runtimeconfig.json";
+
+        fs::path scriptingDll =
+            sdkDir / "Anjean.Scripting.dll";
+
+        fs::path gameAssembly =
+            anjeanDir / "bin" / "Debug" / "net8.0" /
+            (projectRoot.filename().string() + ".dll");
+
+        if (!fs::exists(runtimeConfig))
+        {
+            throw std::runtime_error(
+                "Missing runtime config: " + runtimeConfig.string()
+            );
+        }
+
+        if (!fs::exists(scriptingDll))
+        {
+            throw std::runtime_error(
+                "Missing scripting DLL: " + scriptingDll.string()
+            );
+        }
+
+        if (!fs::exists(gameAssembly))
+        {
+            throw std::runtime_error(
+                "Missing game assembly: " + gameAssembly.string() +
+                "\nRun dotnet build first."
+            );
+        }
+
         scriptingEngine.load(
-            "/Users/caleb/repos/game-test/TestGame/.anjean/Anjean.Scripting.runtimeconfig.json",
-            "/Users/caleb/repos/game-test/TestGame/.anjean/Anjean.Scripting.dll"
+            runtimeConfig.string(),
+            scriptingDll.string()
         );
 
         scriptingEngine.loadGameAssembly(
-            "/Users/caleb/repos/game-test/TestGame/.anjean/bin/Debug/net8.0/TestGame.dll"
+            gameAssembly.string()
         );
 
-        std::filesystem::path currentPath = std::filesystem::current_path();
+        fs::path currentPath = projectRoot;
 
         if (!std::filesystem::exists(currentPath / "Scenes/Main.cs"))
         {

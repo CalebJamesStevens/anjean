@@ -61,4 +61,28 @@ internal class InternalGameObject
             }
         }
     }
+    internal Vec3 Rotation
+    {
+        get
+        {
+            int rc = Native.Anjean_GameObject_GetRotation(id, out Vec3 rotation);
+
+            if (rc != 0)
+            {
+                throw new InvalidOperationException($"Failed to get rotation. rc={rc}");
+            }
+
+            return rotation;
+        }
+
+        set
+        {
+            int rc = Native.Anjean_GameObject_SetRotation(id, value);
+
+            if (rc != 0)
+            {
+                throw new InvalidOperationException($"Failed to set rotation. rc={rc}");
+            }
+        }
+    }
 }

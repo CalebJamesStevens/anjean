@@ -156,7 +156,13 @@ namespace Anjean::Orchestrator
           simd_make_float4(0,0,1,0),
           simd_make_float4(gO->transform.position.x,gO->transform.position.y,gO->transform.position.z,1)
         };
-        objectUniformHandle.modelRot = Rendering::makeRotationY(gO->transform.rotation.y);
+        objectUniformHandle.modelRot = matrix_multiply(
+          Rendering::makeRotationZ(gO->transform.rotation.z* (3.14159265358979323846f / 180.0f)),
+          matrix_multiply(
+            Rendering::makeRotationY(gO->transform.rotation.y* (3.14159265358979323846f / 180.0f)),
+            Rendering::makeRotationX(gO->transform.rotation.x* (3.14159265358979323846f / 180.0f)))
+        );
+
         objectUniformHandle.modelScale = {
           simd_make_float4(1,0,0,0),
           simd_make_float4(0,1,0,0),
@@ -174,6 +180,9 @@ namespace Anjean::Orchestrator
             100.0f
         );
 
+        auto cameraRot = matrix_multiply(Rendering::makeRotationZ(currentCamera.transform.rotation.z* (3.14159265358979323846f / 180.0f)), 
+        matrix_multiply(Rendering::makeRotationY(currentCamera.transform.rotation.y* (3.14159265358979323846f / 180.0f)),
+          Rendering::makeRotationX(currentCamera.transform.rotation.x* (3.14159265358979323846f / 180.0f))));
         simd_float4x4 cameraMatrix = matrix_multiply(
           matrix_multiply({
               simd_make_float4(1,0,0,0),
@@ -181,7 +190,7 @@ namespace Anjean::Orchestrator
               simd_make_float4(0,0,1,0),
               simd_make_float4(-currentCamera.transform.position.x,-currentCamera.transform.position.y,-currentCamera.transform.position.z,1)
             }, 
-            Rendering::makeRotationY(0)
+            cameraRot
           ),
           {
             simd_make_float4(1,0,0,0),

@@ -14,4 +14,10 @@ public class Transform
         get => gameObject.Position;
         set => gameObject.Position = value;
     }
+    
+    public Vec3 Rotation
+    {
+        get => gameObject.Rotation;
+        set => gameObject.Rotation = value;
+    }
 }

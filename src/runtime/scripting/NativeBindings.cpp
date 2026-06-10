@@ -312,8 +312,7 @@ int Anjean_GameObject_GetPosition(
 int Anjean_GameObject_SetPosition(
     std::uint32_t gameObjectId,
     Anjean::Core::Vector3 position
-)
-{
+){
     if (!g_runtime)
     {
         return ANJEAN_ERR_NO_RUNTIME;
@@ -326,6 +325,71 @@ int Anjean_GameObject_SetPosition(
         object.transform.position.x = position.x;
         object.transform.position.y = position.y;
         object.transform.position.z = position.z;
+
+        return ANJEAN_OK;
+    }
+    catch (const std::runtime_error&)
+    {
+        return ANJEAN_ERR_GAME_OBJECT_NOT_FOUND;
+    }
+    catch (...)
+    {
+        return ANJEAN_ERR_UNKNOWN;
+    }
+}
+
+int Anjean_GameObject_GetRotation(
+    std::uint32_t gameObjectId,
+    Anjean::Core::Vector3* outRotation
+)
+{
+    if (!g_runtime)
+    {
+        return ANJEAN_ERR_NO_RUNTIME;
+    }
+
+    if (!outRotation)
+    {
+        return ANJEAN_ERR_NULL_ARGUMENT;
+    }
+
+    try
+    {
+        auto& object = g_runtime->getGameObjectById(gameObjectId);
+
+        outRotation->x = object.transform.rotation.x;
+        outRotation->y = object.transform.rotation.y;
+        outRotation->z = object.transform.rotation.z;
+
+        return ANJEAN_OK;
+    }
+    catch (const std::runtime_error&)
+    {
+        return ANJEAN_ERR_GAME_OBJECT_NOT_FOUND;
+    }
+    catch (...)
+    {
+        return ANJEAN_ERR_UNKNOWN;
+    }
+}
+
+int Anjean_GameObject_SetRotation(
+    std::uint32_t gameObjectId,
+    Anjean::Core::Vector3 rotation
+)
+{
+    if (!g_runtime)
+    {
+        return ANJEAN_ERR_NO_RUNTIME;
+    }
+
+    try
+    {
+        auto& object = g_runtime->getGameObjectById(gameObjectId);
+
+        object.transform.rotation.x = rotation.x;
+        object.transform.rotation.y = rotation.y;
+        object.transform.rotation.z = rotation.z;
 
         return ANJEAN_OK;
     }

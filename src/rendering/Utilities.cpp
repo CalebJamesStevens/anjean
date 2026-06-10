@@ -9,6 +9,19 @@
 #include "Utilities.hpp"
 
 namespace Anjean::Rendering {
+  simd_float4x4 makeRotationX(float radians)
+  {
+      float c = std::cos(radians);
+      float s = std::sin(radians);
+
+      return simd_float4x4{
+          simd_make_float4(1,  0,  0, 0),
+          simd_make_float4(0,  c,  s, 0),
+          simd_make_float4(0, -s,  c, 0),
+          simd_make_float4(0,  0,  0, 1)
+      };
+  }
+
   simd_float4x4 makeRotationY(float radians)
   {
       float c = std::cos(radians);
@@ -19,6 +32,19 @@ namespace Anjean::Rendering {
           simd_make_float4( 0, 1,  0, 0),
           simd_make_float4( s, 0,  c, 0),
           simd_make_float4( 0, 0,  0, 1)
+      };
+  }
+
+  simd_float4x4 makeRotationZ(float radians)
+  {
+      float c = std::cos(radians);
+      float s = std::sin(radians);
+
+      return simd_float4x4{
+          simd_make_float4( c,  s, 0, 0),
+          simd_make_float4(-s,  c, 0, 0),
+          simd_make_float4( 0,  0, 1, 0),
+          simd_make_float4( 0,  0, 0, 1)
       };
   }
   simd_float4x4 makePerspective(

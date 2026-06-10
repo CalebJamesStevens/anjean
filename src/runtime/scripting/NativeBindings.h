@@ -42,6 +42,16 @@ extern "C"
         std::uint32_t gameObjectId,
         Anjean::Core::Vector3 position
     );
+    
+    int Anjean_GameObject_GetRotation(
+        std::uint32_t gameObjectId,
+        Anjean::Core::Vector3* outRotation
+    );
+
+    int Anjean_GameObject_SetRotation(
+        std::uint32_t gameObjectId,
+        Anjean::Core::Vector3 rotation
+    );
 
     int Anjean_GameObject_SetTexture(
         std::uint32_t gameObjectId,

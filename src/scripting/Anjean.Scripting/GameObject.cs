@@ -19,6 +19,9 @@ public abstract class GameObject
 
         public static readonly PropKey<Vec3> TransformPosition =
             new("GameObject.TransformPosition");
+        
+        public static readonly PropKey<Vec3> TransformRotation =
+            new("GameObject.TransformRotation");
 
         public static readonly PropKey<Mesh?> Mesh =
             new("GameObject.Mesh");
@@ -47,6 +50,11 @@ public abstract class GameObject
 
         Transform.Position = GetProp(
             Props.TransformPosition,
+            new Vec3(0, 0, 0)
+        );
+        
+        Transform.Rotation = GetProp(
+            Props.TransformRotation,
             new Vec3(0, 0, 0)
         );
 

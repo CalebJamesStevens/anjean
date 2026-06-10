@@ -22,18 +22,23 @@ std::string makeCsproj(const std::string& projectName)
         "\n"
         "  <ItemGroup>\n"
         "    <Reference Include=\"Anjean.Scripting\">\n"
-        "      <HintPath>.anjean/Anjean.Scripting.dll</HintPath>\n"
+        "      <HintPath>$(MSBuildProjectDirectory)/.anjean/sdk/Anjean.Scripting.dll</HintPath>\n"
         "      <Private>false</Private>\n"
         "    </Reference>\n"
         "  </ItemGroup>\n"
         "\n"
         "  <ItemGroup>\n"
-        "    <Compile Include=\".anjean/Generated/**/*.cs\" />\n"
+        "    <Compile Include=\".anjean/generated/**/*.cs\" />\n"
         "  </ItemGroup>\n"
+        "\n"
+        "  <Target Name=\"CheckAnjeanSdk\" BeforeTargets=\"ResolveReferences\">\n"
+        "    <Error\n"
+        "      Condition=\"!Exists('$(MSBuildProjectDirectory)/.anjean/sdk/Anjean.Scripting.dll')\"\n"
+        "      Text=\"Missing Anjean SDK. Run anjean restore or anjean init to install the scripting SDK.\" />\n"
+        "  </Target>\n"
         "\n"
         "</Project>\n";
 }
-
 std::string makeDirectoryBuildProps()
 {
     return
@@ -42,6 +47,12 @@ std::string makeDirectoryBuildProps()
         "    <BaseOutputPath>.anjean/bin/</BaseOutputPath>\n"
         "    <BaseIntermediateOutputPath>.anjean/obj/</BaseIntermediateOutputPath>\n"
         "    <MSBuildProjectExtensionsPath>.anjean/obj/</MSBuildProjectExtensionsPath>\n"
+        "\n"
+        "    <DefaultItemExcludes>\n"
+        "      $(DefaultItemExcludes);\n"
+        "      .anjean/bin/**;\n"
+        "      .anjean/obj/**\n"
+        "    </DefaultItemExcludes>\n"
         "  </PropertyGroup>\n"
         "</Project>\n";
 }
@@ -55,33 +66,6 @@ std::string makeGitignore()
         "obj/\n";
 }
 
-std::string makeDefaultScript()
-{
-    return
-        "using Anjean;\n"
-        "\n"
-        "public class Player : GameObject\n"
-        "{\n"
-        "    private bool printed = false;\n"
-        "\n"
-        "    public override void Start()\n"
-        "    {\n"
-        "        Console.WriteLine(\"Player.Start() called\");\n"
-        "    }\n"
-        "\n"
-        "    public override void Update()\n"
-        "    {\n"
-        "        if (!printed)\n"
-        "        {\n"
-        "            Console.WriteLine(\"Player.Update() called\");\n"
-        "            printed = true;\n"
-        "        }\n"
-        "\n"
-        "        // Later, once native bindings are working:\n"
-        "        // Transform.Position = new Vec3(0, 0, -3);\n"
-        "    }\n"
-        "}\n";
-}
 void writeFile(const std::filesystem::path& path, const std::string& content)
 {
     std::ofstream file(path);
@@ -137,27 +121,30 @@ void initProjectAt(const std::filesystem::path& projectRoot, const std::string& 
     fs::create_directories(projectRoot / "Scripts");
     fs::create_directories(projectRoot / "Assets");
     fs::create_directories(projectRoot / ".anjean");
-    fs::create_directories(projectRoot / ".anjean/Generated");
+    fs::create_directories(projectRoot / ".anjean/sdk");
+    fs::create_directories(projectRoot / ".anjean/generated");
+    fs::create_directories(projectRoot / ".anjean/bin");
+    fs::create_directories(projectRoot / ".anjean/obj");
 
     writeFile(projectRoot / (projectName + ".csproj"), makeCsproj(projectName));
     writeFile(projectRoot / "Directory.Build.props", makeDirectoryBuildProps());
     writeFile(projectRoot / ".gitignore", makeGitignore());
 
     writeFile(
-        projectRoot / ".anjean/Generated/GlobalUsings.cs",
+        projectRoot / ".anjean/generated/GlobalUsings.cs",
         "global using System;\n"
         "global using Anjean;\n"
     );
 
     fs::copy_file(
-        scriptingRuntimeConfig,
-        projectRoot / ".anjean/Anjean.Scripting.runtimeconfig.json",
-        fs::copy_options::overwrite_existing
+      scriptingRuntimeConfig,
+      projectRoot / ".anjean/sdk/Anjean.Scripting.runtimeconfig.json",
+      fs::copy_options::overwrite_existing
     );
 
     fs::copy_file(
         scriptingDll,
-        projectRoot / ".anjean/Anjean.Scripting.dll",
+        projectRoot / ".anjean/sdk/Anjean.Scripting.dll",
         fs::copy_options::overwrite_existing
     );
 

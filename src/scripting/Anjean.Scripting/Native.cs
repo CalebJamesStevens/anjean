@@ -27,6 +27,17 @@ internal static class Native
         uint gameObjectId,
         Vec3 position
     );
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_GameObject_GetRotation(
+        uint gameObjectId,
+        out Vec3 outRotation
+    );
+
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_GameObject_SetRotation(
+        uint gameObjectId,
+        Vec3 rotation
+    );
     
     [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
     internal static extern int Anjean_PhysicsBody_GetColliderCount(
