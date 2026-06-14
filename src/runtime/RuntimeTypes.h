@@ -5,37 +5,30 @@
 #include <string>
 
 #include "../Core/Core.h"
+#include "../Core/Math.h"
 
-namespace Anjean::Runtime
-{
-  struct Vec3
-  {
-      float x = 0.0f;
-      float y = 0.0f;
-      float z = 0.0f;
-  };
-  
-  struct Vertex
-  {
-      Vec3 position;
+namespace Anjean::Runtime {
+  struct Vec3 {
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
   };
 
-  struct Transform 
-  {
-      Core::Vector3 position;
-      Core::Vector3 rotation;
-      Core::Vector3 scale = { 1.0f, 1.0f, 1.0f };
+  struct Vertex {
+    Vec3 position;
   };
 
-  enum GameObjectType {
-    ANJEAN_GAMEOBJECT,
-    ANJEAN_GAMEOBJECT_CAMERA
+  struct Transform {
+    Core::Vector3 position;
+    Core::Vector3 rotation;
+    Core::Vector3 scale = {1.0f, 1.0f, 1.0f};
   };
 
-  struct Mesh
-  {
-      std::uint32_t id = 0;
-      std::uint32_t vertexCount = 0;
-      std::vector<Anjean::Core::MeshVertex> vertices;
+  enum GameObjectType { ANJEAN_GAMEOBJECT, ANJEAN_GAMEOBJECT_CAMERA };
+
+  struct Mesh {
+    std::uint32_t id = 0;
+    std::uint32_t vertexCount = 0;
+    std::vector<Anjean::Core::MeshVertex> vertices;
   };
-}
+} // namespace Anjean::Runtime

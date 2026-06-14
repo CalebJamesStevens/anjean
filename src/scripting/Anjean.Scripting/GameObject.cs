@@ -131,6 +131,22 @@ public abstract class GameObject
         PhysicsBody = physicsBody;
     }
 
+  public void KinematicMove(PhysicsBody physicsBody, Vec3 displacement)
+  {
+    int rc = Native.Anjean_GameObject_KinematicMove(
+      InternalGameObject.Id,
+      physicsBody.Id,
+      displacement
+    );
+
+    if (rc != 0)
+    {
+        throw new InvalidOperationException(
+            $"Failed to move kinematic physics body. rc={rc}"
+        );
+    }
+  }
+
     internal virtual InternalGameObject CreateInternalObject()
     {
         int rc = Native.Anjean_Runtime_CreateGameObject(out uint id);

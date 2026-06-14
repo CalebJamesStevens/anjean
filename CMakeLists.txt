@@ -83,34 +83,34 @@ target_link_libraries(anjean PRIVATE
 target_compile_options(anjean PRIVATE
     -g
     -O0
-    -fsanitize=address
+    # -fsanitize=address
     -fno-omit-frame-pointer
 )
 
 target_link_options(anjean PRIVATE
-    -fsanitize=address
+    # -fsanitize=address
 )
 
 target_compile_options(anjean_core PRIVATE
     -g
     -O0
-    -fsanitize=address
+    # -fsanitize=address
     -fno-omit-frame-pointer
 )
 
 target_link_options(anjean_core PRIVATE
-    -fsanitize=address
+    # -fsanitize=address
 )
 
 target_compile_options(anjean_native PRIVATE
     -g
     -O0
-    -fsanitize=address
+    # -fsanitize=address
     -fno-omit-frame-pointer
 )
 
 target_link_options(anjean_native PRIVATE
-    -fsanitize=address
+    # -fsanitize=address
 )
 
 # -----------------------------

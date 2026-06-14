@@ -6,25 +6,24 @@
 #include "../RuntimeTypes.h"
 #include "Collider.h"
 
-namespace Anjean::Runtime
-{
-    class PhysicsBody
-    {
-    public:
-        std::uint32_t id = 0;
-        std::uint32_t nextColliderId = 1;
+namespace Anjean::Runtime {
+  class PhysicsBody {
+  public:
+    std::uint32_t id = 0;
+    std::uint32_t nextColliderId = 1;
 
-        Core::PhysicsBodyType type = Core::PhysicsBodyType::Kinematic;
+    Core::PhysicsBodyType type = Core::PhysicsBodyType::Kinematic;
 
-        Core::Vector3 velocity{};
-        Core::Vector3 force{};
-        float mass = 1.0f;
+    Core::Vector3 velocity{};
+    Core::Vector3 force{};
+    Core::Vector3 pendingKinematicMove{};
+    bool hasPendingKinematicMove;
+    float mass = 1.0f;
 
-        std::vector<Collider> colliders;
+    std::vector<Collider> colliders;
 
-        Core::PhysicsBodyType getPhysicsBodyType() const
-        {
-            return type;
-        }
-    };
-}
+    Core::PhysicsBodyType getPhysicsBodyType() const {
+      return type;
+    }
+  };
+} // namespace Anjean::Runtime

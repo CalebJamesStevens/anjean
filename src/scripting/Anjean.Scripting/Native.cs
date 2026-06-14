@@ -96,6 +96,13 @@ internal static class Native
     );
 
     [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int Anjean_GameObject_KinematicMove(
+        uint gameObjectId,
+        uint physicsBodyId,
+        Vec3 displacement
+    );
+
+    [DllImport("Anjean.Native", CallingConvention = CallingConvention.Cdecl)]
     internal static extern int Anjean_GameObject_SetPhysicsBody(
         uint gameObjectId,
         uint physicsBodyId
