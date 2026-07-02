@@ -1,5 +1,7 @@
 # Anjean the Little Engine That Might
 
+On mac: run `source ~/VulkanSDK/1.4.350.0/setup-env.sh` in terminal for graphics development
+
 ## Basic Architecture
 
 The entirety of the game engine is made of 3 seperate engines:
@@ -47,3 +49,30 @@ with an in-house implementation, but it's lower on the priority list.
 
 ### Audio Engine
 Nooo idea yet.
+
+## Project Structure
+
+### Assest Management
+
+Taking a page out of Vulkans book, we will be modeling the expects assets structure after their example.
+
+https://docs.vulkan.org/tutorial/latest/Building_a_Simple_Engine/Loading_Models/02_project_setup.html
+
+assets/
+  ├── models/                  // 3D model files (Categorization)
+  │   ├── characters/          // Character models (Hierarchy)
+  │   │   ├── player/          // Player character models (Hierarchy)
+  │   │   └── npc/             // Non-player character models (Hierarchy)
+  │   ├── environments/        // Environment models
+  │   │   ├── indoor/          // Indoor environment models
+  │   │   └── outdoor/         // Outdoor environment models
+  │   └── props/               // Prop models
+  ├── textures/                // Texture files (Categorization)
+  │   ├── common/              // Shared textures (Discoverability)
+  │   └── high_resolution/     // High-res textures for close-up views (Scalability)
+  ├── shaders/                 // Shader files
+  │   ├── core/                // Essential shaders (Discoverability)
+  │   ├── effects/             // Special effect shaders
+  │   └── mobile/              // Mobile-optimized shaders (Scalability)
+  └── config/                  // Configuration files
+      └── quality_presets/     // Different quality settings (Scalability)

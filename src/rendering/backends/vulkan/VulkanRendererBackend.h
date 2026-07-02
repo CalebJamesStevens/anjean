@@ -8,23 +8,23 @@
 
 namespace Anjean::Rendering
 {
-struct MetalVertex2D
+struct VulkanVertex2D
 {
 	float position[2];
 	float textureCoordinate[2];
 };
 
-class MetalRendererBackend final : public IRenderBackend
+class VulkanRendererBackend final : public IRenderBackend
 {
   public:
-	explicit MetalRendererBackend(Anjean::Window &window);
-	~MetalRendererBackend() override;
+	explicit VulkanRendererBackend(Anjean::Window &window);
+	~VulkanRendererBackend() override;
 
-	MetalRendererBackend(const MetalRendererBackend &)            = delete;
-	MetalRendererBackend &operator=(const MetalRendererBackend &) = delete;
+	VulkanRendererBackend(const VulkanRendererBackend &)            = delete;
+	VulkanRendererBackend &operator=(const VulkanRendererBackend &) = delete;
 
-	MetalRendererBackend(MetalRendererBackend &&) noexcept            = delete;
-	MetalRendererBackend &operator=(MetalRendererBackend &&) noexcept = delete;
+	VulkanRendererBackend(VulkanRendererBackend &&) noexcept            = delete;
+	VulkanRendererBackend &operator=(VulkanRendererBackend &&) noexcept = delete;
 
 	void beginFrame(const Color &clearColor) override;
 
@@ -37,6 +37,8 @@ class MetalRendererBackend final : public IRenderBackend
 	std::pair<decltype(BufferHandle::id), std::optional<decltype(TextureHandle::id)>>
 	     loadMeshToGPU(Anjean::Core::MeshData pMesh) override;
 	void endFrame() override;
+	void onResize(int width, int height) override;
+	void renderFrame(const Anjean::Core::CameraPacket &cameraPacket, const Color &clearColor, std::span<const Anjean::Core::RenderPacket> packets) override;
 
   private:
 	struct Impl;

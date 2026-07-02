@@ -1,0 +1,9 @@
+{
+  "dependencies": [
+    "glm",
+    "stb",
+    "tinygltf",
+    "tinyobjloader",
+    "ktx"
+  ]
+}

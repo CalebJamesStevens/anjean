@@ -1,24 +1,23 @@
 {
-  "version": 6,
+  "version": 3,
   "configurePresets": [
     {
-      "name": "dev",
-      "displayName": "Dev Build",
+      "name": "vcpkg",
+      "generator": "Ninja",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
-        "CMAKE_CXX_STANDARD": "20"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "ANJEAN_USE_VULKAN": "ON",
+        "ANJEAN_USE_METAL": "OFF"
       }
     }
   ],
   "buildPresets": [
     {
-      "name": "dev",
-      "configurePreset": "dev"
-    },
-    {
-      "name": "rebuild",
-      "configurePreset": "dev",
-      "cleanFirst": true
+      "name": "vcpkg",
+      "configurePreset": "vcpkg"
     }
   ]
 }

@@ -43,3 +43,6 @@ obj/
 
 # Logs
 *.log
+
+# Packages
+vcpkg_installed/
