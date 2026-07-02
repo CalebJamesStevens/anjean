@@ -584,7 +584,7 @@ void MetalRendererBackend::beginFrame(const Color &clearColor)
 }
 
 std::pair<decltype(BufferHandle::id), std::optional<decltype(TextureHandle::id)>>
-    MetalRendererBackend::loadMeshToGPU(Anjean::Core::MeshData pMesh)
+    MetalRendererBackend::loadModelToGPU(Anjean::Core::MeshData pMesh)
 {
 	Anjean::Rendering::BufferDesc desc;
 

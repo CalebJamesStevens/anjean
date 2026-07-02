@@ -50,11 +50,11 @@ void Renderer::drawSprite(const PipelineHandle &pPipeline, const Core::MeshData 
 	m_backend->drawSprite(pPipeline, pMesh, pTexture, pObjectUniform);
 }
 
-std::pair<decltype(BufferHandle::id), std::optional<decltype(TextureHandle::id)>>
-    Renderer::loadMeshToGPU(Anjean::Core::MeshData pMesh)
+void Renderer::loadModelToGPU(std::span<const Core::ImportedModel *const> models)
 {
-	return m_backend->loadMeshToGPU(pMesh);
+	m_backend->loadModelToGPU(models);
 }
+
 void Renderer::onResize(int width, int height)
 {
 	m_backend->onResize(width, height);

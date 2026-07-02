@@ -18,8 +18,7 @@ class IRenderBackend
 	                                  const std::optional<TextureHandle> &pTexture,
 	                                  const ObjectUniform                &pObjectUniform)                                                                            = 0;
 	virtual void           renderFrame(const Anjean::Core::CameraPacket &cameraPacket, const Color &clearColor, std::span<const Anjean::Core::RenderPacket> packets) = 0;
-	virtual std::pair<decltype(BufferHandle::id), std::optional<decltype(TextureHandle::id)>>
-	    loadMeshToGPU(Anjean::Core::MeshData pMesh) = 0;
+	virtual void           loadModelToGPU(std::span<const Core::ImportedModel *const> models)                                                                        = 0;
 
 	virtual void endFrame() = 0;
 };

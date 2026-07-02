@@ -69,6 +69,8 @@ endfunction()
 # -----------------------------
 
 add_library(anjean_core STATIC
+    src/runtime/ModelLoader.cpp
+    src/runtime/RenderSystem.cpp
     src/runtime/Runtime.cpp
     src/runtime/objects/NativeMeshes/Mesh.cpp
     src/runtime/input/InputManager.cpp
@@ -81,10 +83,12 @@ set_target_properties(anjean_core PROPERTIES
 
 target_include_directories(anjean_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${TINYGLTF_INCLUDE_DIR}
 )
 
 target_link_libraries(anjean_core PUBLIC
     SDL3::SDL3
+    glm::glm
 )
 
 target_link_libraries(anjean_core PRIVATE
@@ -135,6 +139,8 @@ target_sources(anjean PRIVATE
     src/rendering/RendererBackendFactory.cpp
     src/rendering/RendererSelection.cpp
     src/rendering/Utilities.cpp
+
+    src/vendor/stb_image.cpp
 )
 
 target_include_directories(anjean PRIVATE

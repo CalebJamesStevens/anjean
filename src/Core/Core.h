@@ -1,11 +1,13 @@
 #pragma once
 #include <cstdint>
+#include <filesystem>
 #include <iostream>
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/hash.hpp>
+#include <ktx.h>
 
 #include <algorithm>
 #include <ranges>
@@ -143,8 +145,9 @@ enum class PhysicsBodyType : std::uint32_t
 	Dynamic   = 2
 };
 
-using ObjectId = std::uint32_t;
-using MeshId   = std::uint32_t;
+using ModelAssetId = std::uint32_t;
+using ObjectId     = std::uint32_t;
+using MeshId       = std::uint32_t;
 
 struct ColliderState
 {
@@ -208,6 +211,14 @@ struct RenderPacket
 	glm::vec3 position = glm::vec3(0.0f);
 	glm::vec3 rotation = glm::vec3(0.0f);
 	glm::vec3 scale    = glm::vec3(1.0f);
+};
+
+struct TexturePacket
+{
+	uint32_t     texWidth;
+	uint32_t     texHeight;
+	ktx_size_t   imageSize;
+	ktx_uint8_t *ktxTextureData;
 };
 
 struct TransformComponent
@@ -393,5 +404,99 @@ struct MeshDescriptor
 	std::uint32_t                         id          = 0;
 	std::uint32_t                         vertexCount = 0;
 	std::vector<Anjean::Core::MeshVertex> vertices;
+};
+
+constexpr uint32_t InvalidImportIndex = std::numeric_limits<uint32_t>::max();
+
+struct ImportedVertex
+{
+	glm::vec3 position{0.0f};
+	glm::vec3 normal{0.0f, 0.0f, 1.0f};
+	glm::vec2 uv{0.0f};
+};
+
+struct ImportedPrimitive
+{
+	uint32_t firstVertex = 0;
+	uint32_t vertexCount = 0;
+	uint32_t firstIndex  = 0;
+	uint32_t indexCount  = 0;
+};
+
+struct ImportedMeshPrimitive
+{
+	uint32_t primitiveIndex = InvalidImportIndex;
+	uint32_t materialIndex  = InvalidImportIndex;
+};
+
+struct ImportedMesh
+{
+	std::string name;
+	uint32_t    firstMeshPrimitive = 0;
+	uint32_t    meshPrimitiveCount = 0;
+};
+
+struct ImportedTexture
+{
+	std::string          name;
+	std::string          uri;
+	std::vector<uint8_t> bytes;
+	int                  width    = 0;
+	int                  height   = 0;
+	int                  channels = 0;
+};
+
+struct ImportedSampler
+{
+	int magFilter = -1;
+	int minFilter = -1;
+	int wrapS     = -1;
+	int wrapT     = -1;
+};
+
+struct ImportedMaterial
+{
+	std::string name;
+
+	glm::vec4 baseColorFactor{1.0f};
+	float     metallicFactor  = 1.0f;
+	float     roughnessFactor = 1.0f;
+	float     alphaCutoff     = 0.5f;
+
+	uint32_t baseColorTextureIndex         = InvalidImportIndex;
+	uint32_t baseColorSamplerIndex         = InvalidImportIndex;
+	uint32_t normalTextureIndex            = InvalidImportIndex;
+	uint32_t normalSamplerIndex            = InvalidImportIndex;
+	uint32_t metallicRoughnessTextureIndex = InvalidImportIndex;
+	uint32_t metallicRoughnessSamplerIndex = InvalidImportIndex;
+	uint32_t emissiveTextureIndex          = InvalidImportIndex;
+	uint32_t emissiveSamplerIndex          = InvalidImportIndex;
+};
+
+struct ImportedNode
+{
+	std::string name;
+	uint32_t    meshIndex = InvalidImportIndex;
+	glm::mat4   transform{1.0f};
+};
+
+struct ImportedModel
+{
+	ModelAssetId          id = 0;
+	std::filesystem::path sourcePath;
+	std::string           name;
+
+	std::vector<ImportedVertex> vertices;
+	std::vector<std::uint32_t>  indices;
+
+	std::vector<ImportedPrimitive>     primitives;
+	std::vector<ImportedMeshPrimitive> meshPrimitives;
+	std::vector<ImportedMesh>          meshes;
+
+	std::vector<ImportedTexture>  textures;
+	std::vector<ImportedSampler>  samplers;
+	std::vector<ImportedMaterial> materials;
+
+	std::vector<ImportedNode> nodes;
 };
 }        // namespace Anjean::Core

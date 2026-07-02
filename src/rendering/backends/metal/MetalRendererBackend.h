@@ -35,7 +35,7 @@ class MetalRendererBackend final : public IRenderBackend
 	                          const std::optional<TextureHandle> &pTexture,
 	                          const ObjectUniform                &pObjectUniform) override;
 	std::pair<decltype(BufferHandle::id), std::optional<decltype(TextureHandle::id)>>
-	     loadMeshToGPU(Anjean::Core::MeshData pMesh) override;
+	     loadModelToGPU(Anjean::Core::MeshData pMesh) override;
 	void endFrame() override;
 
   private:

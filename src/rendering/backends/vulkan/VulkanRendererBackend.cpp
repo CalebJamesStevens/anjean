@@ -15,8 +15,6 @@ import vulkan_hpp;
 #include <glm/gtx/hash.hpp>
 #include <ktx.h>
 
-#define TINYGLTF_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <tiny_gltf.h>
 
 #include <vulkan/vulkan.hpp>
@@ -30,19 +28,11 @@ import vulkan_hpp;
 #include <map>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
-
-// binding 0 = FrameDataUBO
-//  binding 1 = ObjectData SSBO
-//  binding 2 = MaterialData SSBO
-//  binding 3 = GeometryData SSBO
-//  binding 4 = DrawData SSBO
-//  binding 5 = textures[]
-//  binding 6 = samplers[]
 
 struct PushConstants
 {
-	uint32_t passIndex;
 	uint32_t drawIndex;
 };
 
@@ -77,29 +67,26 @@ struct Vertex
 };
 
 // Structure for PBR material properties
-struct Material
-{
-	glm::vec4 baseColorFactor = glm::vec4(1.0f);
-	float     metallicFactor  = 1.0f;
-	float     roughnessFactor = 1.0f;
-	glm::vec3 emissiveFactor  = glm::vec3(0.0f);
-
-	int baseColorTextureIndex         = -1;
-	int metallicRoughnessTextureIndex = -1;
-	int normalTextureIndex            = -1;
-	int occlusionTextureIndex         = -1;
-	int emissiveTextureIndex          = -1;
-};
-
 struct MaterialData
 {
 	glm::vec4 baseColorFactor;
-	float     metallicFactor;
-	float     roughnessFactor;
-	int       baseColorTexture;
-	int       normalTexture;
-	int       metallicRoughnessTexture;
-	int       emissiveTexture;
+
+	float    metallicFactor;
+	float    roughnessFactor;
+	float    alphaCutoff;
+	uint32_t flags;
+
+	int32_t baseColorTextureIndex;
+	int32_t baseColorSamplerIndex;
+
+	int32_t normalTextureIndex;
+	int32_t normalSamplerIndex;
+
+	int32_t metallicRoughnessTextureIndex;
+	int32_t metallicRoughnessSamplerIndex;
+
+	int32_t emissiveTextureIndex;
+	int32_t emissiveSamplerIndex;
 };
 
 // Structure for a mesh with vertices, indices, and material
@@ -123,6 +110,30 @@ struct hash<Vertex>
 };
 }        // namespace std
 
+struct GpuBuffer
+{
+	vk::raii::Buffer       buffer = nullptr;
+	vk::raii::DeviceMemory memory = nullptr;
+	vk::DeviceSize         size   = 0;
+};
+
+struct MeshPrimitiveUpload
+{
+	uint32_t firstIndex;
+	uint32_t indexCount;
+	uint32_t firstVertex;
+	uint32_t vertexCount;
+	uint32_t materialIndex;        // optional importer-side association
+};
+
+struct MeshUploadData
+{
+	uint32_t                             id;
+	std::span<const Vertex>              vertices;
+	std::span<const uint32_t>            indices;
+	std::span<const MeshPrimitiveUpload> primitives;
+};
+
 namespace Anjean::Rendering
 {
 constexpr uint32_t WIDTH                = 800;
@@ -130,6 +141,8 @@ constexpr uint32_t HEIGHT               = 600;
 const std::string  MODEL_PATH           = "models/viking_room.gltf";
 const std::string  TEXTURE_PATH         = "/Users/caleb/repos/anjean/2d_rgba8.ktx2";
 constexpr int      MAX_FRAMES_IN_FLIGHT = 2;
+constexpr uint32_t MaxBindlessTextures  = 256;
+constexpr uint32_t MaxBindlessSamplers  = 16;
 
 const std::vector<char const *> validationLayers = {"VK_LAYER_KHRONOS_validation"};
 
@@ -151,18 +164,51 @@ struct ObjectData
 	glm::mat4 modelMatrix;
 };
 
-struct GpuMesh
+struct PendingTextureUpload
 {
-	Anjean::Core::MeshId id = 0;
+	uint32_t               textureIndex  = 0;
+	vk::raii::Buffer       stagingBuffer = nullptr;
+	vk::raii::DeviceMemory stagingMemory = nullptr;
+	uint32_t               width         = 0;
+	uint32_t               height        = 0;
+};
 
-	vk::raii::Buffer       vertexBuffer       = nullptr;
-	vk::raii::DeviceMemory vertexBufferMemory = nullptr;
+struct DrawData
+{
+	uint32_t objectIndex;
+	uint32_t materialIndex;
+	uint32_t primitiveIndex;
+	uint32_t pad;
+};
 
-	vk::raii::Buffer       indexBuffer       = nullptr;
-	vk::raii::DeviceMemory indexBufferMemory = nullptr;
+struct MeshPrimitiveAsset
+{
+	uint32_t primitiveIndex;
+	uint32_t importedMaterialIndex;
+};
 
-	uint32_t indexCount  = 0;
-	uint32_t vertexCount = 0;
+struct MeshAsset
+{
+	uint32_t firstMeshPrimitiveAsset;
+	uint32_t meshPrimitiveAssetCount;
+};
+
+struct MeshPrimitive
+{
+	uint32_t vertexOffset;
+	uint32_t vertexCount;
+	uint32_t indexOffset;
+	uint32_t indexCount;
+};
+
+struct MaterialAsset
+{
+	uint32_t materialIndex;
+};
+
+struct TextureAsset
+{
+	uint32_t textureIndex;
 };
 
 // Define a structure to hold per-object data
@@ -172,68 +218,23 @@ struct RenderObject
 	Anjean::Core::MeshId   meshId   = 0;
 
 	// Transform properties
-	glm::vec3 position = {0.0f, 0.0f, 0.0f};
-	glm::vec3 rotation = {0.0f, 0.0f, 0.0f};
-	glm::vec3 scale    = {1.0f, 1.0f, 1.0f};
-
-	// Descriptor sets for this object (one per frame in flight)
-	std::vector<vk::raii::DescriptorSet> descriptorSets;
+	glm::vec3 position      = {0.0f, 0.0f, 0.0f};
+	glm::vec3 rotation      = {0.0f, 0.0f, 0.0f};
+	glm::vec3 scale         = {1.0f, 1.0f, 1.0f};
+	glm::mat4 nodeTransform = glm::mat4(1.0f);
 
 	// Calculate model matrix based on position, rotation, and scale
 	glm::mat4 getModelMatrix() const
 	{
 		glm::mat4 model = glm::mat4(1.0f);
 		model           = glm::translate(model, position);
-		model           = glm::rotate(model, rotation.x, glm::vec3(1.0f, 0.0f, 0.0f));
-		model           = glm::rotate(model, rotation.y, glm::vec3(0.0f, 1.0f, 0.0f));
-		model           = glm::rotate(model, rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
+		model           = glm::rotate(model, rotation.x, glm::vec3(1, 0, 0));
+		model           = glm::rotate(model, rotation.y, glm::vec3(0, 1, 0));
+		model           = glm::rotate(model, rotation.z, glm::vec3(0, 0, 1));
 		model           = glm::scale(model, scale);
-		return model;
+		return model * nodeTransform;
 	}
 };
-
-// bool cameraInside = (camPos.x >= wmin.x && camPos.x <= wmax.x &&
-// camera->ForceViewMatrixUpdate();
-// CameraComponent* camera,
-// const bool doCulling = enableFrustumCulling && camera;
-// const glm::mat4 vp = proj * camera->GetViewMatrix();
-// float farZ = camera->GetFarPlane();
-// float fov = glm::radians(camera->GetFieldOfView());
-// float nearZ = camera->GetNearPlane();
-// frameUboTemplate.camPos = glm::vec4(camera->GetPosition(), 1.0f);
-// frameUboTemplate.farZ = camera->GetFarPlane();
-// frameUboTemplate.nearZ = camera->GetNearPlane();
-// frameUboTemplate.proj = camera->GetProjectionMatrix();
-// frameUboTemplate.view = camera->GetViewMatrix();
-// glm::mat4 camView = camera->GetViewMatrix();
-// glm::mat4 proj = camera->GetProjectionMatrix();
-// glm::mat4 projReflected = camera ? camera->GetProjectionMatrix() : glm::mat4(1.0f);
-// glm::mat4 view = camera->GetViewMatrix();
-// glm::mat4 viewReflected = camera ? (camera->GetViewMatrix() * reflectM) : reflectM;
-// glm::vec3 camPos = camera ? camera->GetPosition() : glm::vec3(0.0f);
-// glm::vec3 camPos = camera->GetPosition();
-// if (!camera) return;
-// if (!cameraInside) {
-// if (doCulling && camera) {
-// if (enableDistanceLOD && camera) {
-// prepareFrameUboTemplate(camera);
-// refitTopLevelAS(entities, camera);
-// Render(snapshot, camera, imguiSystem);
-// renderReflectionPass(commandBuffers[currentFrame], planeWS, camera, opaqueJobs);
-// ubo.camPos = glm::vec4(camera ? camera->GetPosition() : glm::vec3(0), 1.0f);
-// ubo.camPos = glm::vec4(camera->GetPosition(), 1.0f);
-// ubo.proj = camera->GetProjectionMatrix();
-// ubo.view = camera->GetViewMatrix();
-// updateLightStorageBuffer(currentFrame, lightsSubset, camera);
-// updateUniformBuffer(currentFrame, entity, &entityRes, camera, tc);
-// updateUniformBufferInternal(currentFrame, entity, entityRes, camera, ubo);
-// updateUniformBufferInternal(currentImage, entity, entityRes, camera, ubo);
-// void Renderer::prepareFrameUboTemplate(CameraComponent* camera) {
-// void Renderer::Render(const std::vector<Entity *>& entities, CameraComponent* camera, ImGuiSystem* imguiSystem) {
-// void Renderer::Render(const std::vector<std::unique_ptr<Entity>>& entities, CameraComponent* camera, ImGuiSystem* imguiSystem) {
-// void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, EntityResources* entityRes, CameraComponent* camera, const glm::mat4& customTransform) {
-// void Renderer::updateUniformBuffer(uint32_t currentImage, Entity* entity, EntityResources* entityRes, CameraComponent* camera, TransformComponent* tc) {
-// void Renderer::updateUniformBufferInternal(uint32_t currentImage, Entity* entity, EntityResources* entityRes, CameraComponent* camera, UniformBufferObject& ubo) {
 
 struct CameraObject
 {
@@ -255,55 +256,106 @@ struct FrameDataUBO
 	glm::vec2    renderSize;
 };
 
+struct GpuTexture
+{
+	vk::raii::Image        image     = nullptr;
+	vk::raii::DeviceMemory memory    = nullptr;
+	vk::raii::ImageView    imageView = nullptr;
+	vk::raii::Sampler      sampler   = nullptr;
+	vk::Format             format    = vk::Format::eR8G8B8A8Unorm;
+	uint32_t               width     = 0;
+	uint32_t               height    = 0;
+	uint32_t               mipLevels = 1;
+};
+
+struct TextureTableHandle
+{
+	uint32_t textureIndex = 0;
+};
+
+struct ModelNodeAsset
+{
+	uint32_t  meshIndex;
+	glm::mat4 transform;
+};
+
+struct ModelAsset
+{
+	uint32_t firstNode = 0;
+	uint32_t nodeCount = 0;
+};
+
 struct VulkanRendererBackend::Impl
 {
-	vk::raii::Context                                 context;
-	vk::raii::Instance                                instance       = nullptr;
-	vk::raii::PhysicalDevice                          physicalDevice = nullptr;
-	vk::raii::Device                                  device         = nullptr;
-	vk::PhysicalDeviceFeatures                        deviceFeatures;
-	uint32_t                                          graphicsQueueIndex = ~0;
-	vk::raii::Queue                                   graphicsQueue      = nullptr;
-	vk::raii::SurfaceKHR                              surface            = nullptr;
-	vk::ClearValue                                    clearColor         = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
-	vk::raii::SwapchainKHR                            swapChain          = nullptr;
-	std::vector<vk::Image>                            swapChainImages;
-	vk::SurfaceFormatKHR                              swapChainSurfaceFormat;
-	vk::Extent2D                                      swapChainExtent;
-	std::vector<vk::raii::ImageView>                  swapChainImageViews;
-	vk::raii::DescriptorSetLayout                     descriptorSetLayout = nullptr;
-	vk::raii::PipelineLayout                          pipelineLayout      = nullptr;
-	vk::raii::Pipeline                                graphicsPipeline    = nullptr;
-	vk::raii::CommandPool                             commandPool         = nullptr;
-	std::vector<vk::raii::CommandBuffer>              commandBuffers;
-	std::vector<vk::raii::Semaphore>                  presentCompleteSemaphores;
-	std::vector<vk::raii::Semaphore>                  renderFinishedSemaphores;
-	std::vector<vk::raii::Fence>                      inFlightFences;
-	uint32_t                                          frameIndex         = 0;
-	bool                                              framebufferResized = false;
-	vk::raii::DescriptorPool                          descriptorPool     = nullptr;
-	vk::raii::Image                                   textureImage       = nullptr;
-	vk::raii::DeviceMemory                            textureImageMemory = nullptr;
-	vk::PipelineStageFlags                            sourceStage;
-	vk::PipelineStageFlags                            destinationStage;
-	vk::raii::ImageView                               textureImageView = nullptr;
-	vk::raii::Sampler                                 textureSampler   = nullptr;
-	vk::raii::Image                                   depthImage       = nullptr;
-	vk::raii::DeviceMemory                            depthImageMemory = nullptr;
-	vk::raii::ImageView                               depthImageView   = nullptr;
-	std::unordered_map<Anjean::Core::MeshId, GpuMesh> gpuMeshes;
-	std::vector<RenderObject>                         renderObjects;
-	Anjean::Window                                   &window;
-	CameraObject                                      activeCamera;
-	// std::vector<GpuTexture>                           textures;
-	std::vector<vk::raii::Sampler>      samplers;
-	std::vector<vk::raii::Buffer>       frameDataUBOs;
-	std::vector<vk::raii::DeviceMemory> frameDataUBOMemories;
-	std::vector<void *>                 frameDataUBOMapped{};
-	std::vector<vk::raii::Buffer>       objectDataSSBO;
-	std::vector<vk::raii::DeviceMemory> objectDataSSBOMemories;
-	std::vector<void *>                 objectDataSSBOMapped{};
-
+	vk::raii::Context                                  context;
+	vk::raii::Instance                                 instance       = nullptr;
+	vk::raii::PhysicalDevice                           physicalDevice = nullptr;
+	vk::raii::Device                                   device         = nullptr;
+	vk::PhysicalDeviceFeatures                         deviceFeatures;
+	uint32_t                                           graphicsQueueIndex = ~0;
+	vk::raii::Queue                                    graphicsQueue      = nullptr;
+	vk::raii::SurfaceKHR                               surface            = nullptr;
+	vk::ClearValue                                     clearColor         = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+	vk::raii::SwapchainKHR                             swapChain          = nullptr;
+	std::vector<vk::Image>                             swapChainImages;
+	vk::SurfaceFormatKHR                               swapChainSurfaceFormat;
+	vk::Extent2D                                       swapChainExtent;
+	std::vector<vk::raii::ImageView>                   swapChainImageViews;
+	std::vector<vk::raii::DescriptorSet>               frameDescriptorSets;
+	vk::raii::DescriptorSetLayout                      descriptorSetLayout = nullptr;
+	vk::raii::PipelineLayout                           pipelineLayout      = nullptr;
+	vk::raii::Pipeline                                 graphicsPipeline    = nullptr;
+	vk::raii::CommandPool                              commandPool         = nullptr;
+	std::vector<vk::raii::CommandBuffer>               commandBuffers;
+	std::vector<vk::raii::Semaphore>                   presentCompleteSemaphores;
+	std::vector<vk::raii::Semaphore>                   renderFinishedSemaphores;
+	std::vector<vk::raii::Fence>                       inFlightFences;
+	uint32_t                                           frameIndex         = 0;
+	bool                                               framebufferResized = false;
+	vk::raii::DescriptorPool                           descriptorPool     = nullptr;
+	vk::PipelineStageFlags                             sourceStage;
+	vk::PipelineStageFlags                             destinationStage;
+	vk::raii::Image                                    depthImage       = nullptr;
+	vk::raii::DeviceMemory                             depthImageMemory = nullptr;
+	vk::raii::ImageView                                depthImageView   = nullptr;
+	std::vector<RenderObject>                          renderObjects;
+	Anjean::Window                                    &window;
+	CameraObject                                       activeCamera;
+	vk::raii::Buffer                                   sceneVertexBuffer       = nullptr;
+	vk::raii::DeviceMemory                             sceneVertexBufferMemory = nullptr;
+	vk::raii::Buffer                                   sceneIndexBuffer        = nullptr;
+	vk::raii::DeviceMemory                             sceneIndexBufferMemory  = nullptr;
+	std::vector<Vertex>                                cpuVertices;
+	std::vector<uint32_t>                              cpuIndices;
+	std::vector<MaterialData>                          materials;
+	std::vector<MeshAsset>                             meshes;
+	std::vector<MeshPrimitive>                         primitives;
+	std::vector<MeshPrimitiveAsset>                    meshPrimitiveAssets;
+	std::vector<GpuTexture>                            gpuTextures;
+	std::vector<vk::raii::Sampler>                     samplers;
+	std::vector<DrawData>                              draws;
+	std::vector<vk::raii::Buffer>                      frameDataUBOs;
+	std::vector<vk::raii::DeviceMemory>                frameDataUBOMemories;
+	std::vector<void *>                                frameDataUBOMapped{};
+	std::vector<vk::raii::Buffer>                      objectDataSSBO;
+	std::vector<vk::raii::DeviceMemory>                objectDataSSBOMemories;
+	std::vector<void *>                                objectDataSSBOMapped{};
+	std::vector<vk::raii::Buffer>                      materialDataSSBO;
+	std::vector<vk::raii::DeviceMemory>                materialDataSSBOMemories;
+	std::vector<void *>                                materialDataSSBOMapped{};
+	std::vector<vk::raii::Buffer>                      primitiveDataSSBO;
+	std::vector<vk::raii::DeviceMemory>                primitiveDataSSBOMemories;
+	std::vector<void *>                                primitiveDataSSBOMapped{};
+	std::vector<vk::raii::Buffer>                      drawDataSSBO;
+	std::vector<vk::raii::DeviceMemory>                drawDataSSBOMemories;
+	std::vector<void *>                                drawDataSSBOMapped{};
+	uint32_t                                           defaultMaterialIndex = UINT32_MAX;
+	std::unordered_map<Anjean::Core::MeshId, uint32_t> modelIdToMeshIndex;
+	uint32_t                                           defaultSamplerIndex = UINT32_MAX;
+	std::vector<ModelAsset>                            modelAssets;
+	std::vector<ModelNodeAsset>                        modelNodeAssets;
+	std::unordered_map<Core::ModelAssetId, uint32_t>   modelIdToModelAssetIndex;
+	std::vector<PendingTextureUpload>                  pendingTextureUploads;
 	Impl(Anjean::Window &windowRef) : window(windowRef)
 	{}
 
@@ -380,14 +432,15 @@ struct VulkanRendererBackend::Impl
 
 		auto features = physicalDevice.template getFeatures2<
 		    vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan11Features,
-		    vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+		    vk::PhysicalDeviceVulkan12Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
 
+		auto const &v12 = features.get<vk::PhysicalDeviceVulkan12Features>();
 		auto const &v13 = features.get<vk::PhysicalDeviceVulkan13Features>();
 
 		bool supportsRequiredFeatures =
 		    features.template get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy &&
 		    features.template get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
-		    v13.dynamicRendering && v13.synchronization2 &&
+		    v12.runtimeDescriptorArray && v13.dynamicRendering && v13.synchronization2 &&
 		    features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>()
 		        .extendedDynamicState;
 
@@ -596,11 +649,13 @@ struct VulkanRendererBackend::Impl
 		}
 
 		vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan11Features,
+		                   vk::PhysicalDeviceVulkan12Features,
 		                   vk::PhysicalDeviceVulkan13Features,
 		                   vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
 		    featureChain = {
 		        {.features = {.samplerAnisotropy = true}},        // vk::PhysicalDeviceFeatures2
 		        {.shaderDrawParameters = true},                   // Enable shader draw parameters from Vulkan 1.1
+		        {.runtimeDescriptorArray = true},                 // Enable runtime-sized descriptor arrays from Vulkan 1.2
 		        {.synchronization2 = true,
 		         .dynamicRendering = true},           // Enable dynamic rendering from Vulkan 1.3
 		        {.extendedDynamicState = true}        // Enable extended dynamic state from the extension
@@ -717,8 +772,18 @@ struct VulkanRendererBackend::Impl
 		                                                    .attachmentCount = 1,
 		                                                    .pAttachments    = &colorBlendAttachment};
 
+		vk::PushConstantRange pushConstantRange{
+		    .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+		    .offset     = 0,
+		    .size       = sizeof(PushConstants),
+		};
+
 		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{
-		    .setLayoutCount = 1, .pSetLayouts = &*descriptorSetLayout, .pushConstantRangeCount = 0};
+		    .setLayoutCount         = 1,
+		    .pSetLayouts            = &*descriptorSetLayout,
+		    .pushConstantRangeCount = 1,
+		    .pPushConstantRanges    = &pushConstantRange,
+		};
 
 		pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
 
@@ -850,40 +915,56 @@ struct VulkanRendererBackend::Impl
 		                    static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
 		commandBuffers[frameIndex].setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
 
-		for (uint32_t objectIndex = 0; objectIndex < renderObjects.size(); ++objectIndex)
+		if (!draws.empty())
 		{
-			const auto &renderObject = renderObjects[objectIndex];
-			auto        meshIt       = gpuMeshes.find(renderObject.meshId);
-			if (meshIt == gpuMeshes.end())
-			{
-				continue;
-			}
-
-			const GpuMesh &mesh = meshIt->second;
-
-			commandBuffers[frameIndex].bindVertexBuffers(
-			    0,
-			    *mesh.vertexBuffer,
-			    {0});
-
 			commandBuffers[frameIndex].bindDescriptorSets(
 			    vk::PipelineBindPoint::eGraphics,
 			    *pipelineLayout,
 			    0,
-			    *renderObject.descriptorSets[frameIndex],
+			    *frameDescriptorSets[frameIndex],
 			    nullptr);
 
-			if (mesh.indexCount > 0)
+			for (uint32_t drawIndex = 0; drawIndex < draws.size(); ++drawIndex)
 			{
-				commandBuffers[frameIndex].bindIndexBuffer(*mesh.indexBuffer, 0, vk::IndexType::eUint32);
-				commandBuffers[frameIndex].drawIndexed(mesh.indexCount, 1, 0, 0, objectIndex);
-			}
-			else
-			{
-				commandBuffers[frameIndex].draw(mesh.vertexCount, 1, 0, objectIndex);
+				const DrawData      &draw      = draws[drawIndex];
+				const MeshPrimitive &primitive = primitives[draw.primitiveIndex];
+
+				commandBuffers[frameIndex].bindVertexBuffers(
+				    0,
+				    *sceneVertexBuffer,
+				    {0});
+
+				PushConstants pushConstants{
+				    .drawIndex = drawIndex,
+				};
+
+				commandBuffers[frameIndex].pushConstants(
+				    *pipelineLayout,
+				    vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+				    0,
+				    sizeof(PushConstants),
+				    &pushConstants);
+
+				if (primitive.indexCount > 0)
+				{
+					commandBuffers[frameIndex].bindIndexBuffer(*sceneIndexBuffer, 0, vk::IndexType::eUint32);
+					commandBuffers[frameIndex].drawIndexed(
+					    primitive.indexCount,
+					    1,
+					    primitive.indexOffset,
+					    static_cast<int32_t>(primitive.vertexOffset),
+					    0);
+				}
+				else
+				{
+					commandBuffers[frameIndex].draw(
+					    primitive.vertexCount,
+					    1,
+					    primitive.vertexOffset,
+					    0);
+				}
 			}
 		}
-
 		// End rendering
 		commandBuffers[frameIndex].endRendering();
 
@@ -978,7 +1059,7 @@ struct VulkanRendererBackend::Impl
 
 	void createDescriptorSetLayout()
 	{
-		std::array<vk::DescriptorSetLayoutBinding, 3> bindings{
+		std::array<vk::DescriptorSetLayoutBinding, 7> bindings{
 		    {{.binding         = 0,
 		      .descriptorType  = vk::DescriptorType::eUniformBuffer,
 		      .descriptorCount = 1,
@@ -988,8 +1069,26 @@ struct VulkanRendererBackend::Impl
 		      .descriptorCount = 1,
 		      .stageFlags      = vk::ShaderStageFlagBits::eVertex},
 		     {.binding         = 2,
-		      .descriptorType  = vk::DescriptorType::eCombinedImageSampler,
+		      .descriptorType  = vk::DescriptorType::eStorageBuffer,
 		      .descriptorCount = 1,
+		      .stageFlags      = vk::ShaderStageFlagBits::eVertex |
+		                         vk::ShaderStageFlagBits::eFragment},
+		     {.binding         = 3,
+		      .descriptorType  = vk::DescriptorType::eStorageBuffer,
+		      .descriptorCount = 1,
+		      .stageFlags      = vk::ShaderStageFlagBits::eVertex},
+		     {.binding         = 4,
+		      .descriptorType  = vk::DescriptorType::eStorageBuffer,
+		      .descriptorCount = 1,
+		      .stageFlags      = vk::ShaderStageFlagBits::eVertex |
+		                         vk::ShaderStageFlagBits::eFragment},
+		     {.binding         = 5,
+		      .descriptorType  = vk::DescriptorType::eSampledImage,
+		      .descriptorCount = MaxBindlessTextures,
+		      .stageFlags      = vk::ShaderStageFlagBits::eFragment},
+		     {.binding         = 6,
+		      .descriptorType  = vk::DescriptorType::eSampler,
+		      .descriptorCount = MaxBindlessSamplers,
 		      .stageFlags      = vk::ShaderStageFlagBits::eFragment}}};
 
 		vk::DescriptorSetLayoutCreateInfo layoutInfo{
@@ -1074,10 +1173,105 @@ struct VulkanRendererBackend::Impl
 		}
 	}
 
+	void createDrawDataBuffers()
+	{
+		drawDataSSBO.clear();
+		drawDataSSBOMemories.clear();
+		drawDataSSBOMapped.clear();
+
+		if (draws.empty())
+			return;
+
+		vk::DeviceSize bufferSize = sizeof(DrawData) * draws.size();
+
+		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+		{
+			auto [buffer, bufferMem] = createBuffer(bufferSize, vk::BufferUsageFlagBits::eStorageBuffer,
+			                                        vk::MemoryPropertyFlagBits::eHostVisible |
+			                                            vk::MemoryPropertyFlagBits::eHostCoherent);
+
+			drawDataSSBO.emplace_back(std::move(buffer));
+			drawDataSSBOMemories.emplace_back(std::move(bufferMem));
+			drawDataSSBOMapped.emplace_back(
+			    drawDataSSBOMemories[i].mapMemory(0, bufferSize));
+		}
+	}
+
+	void createMaterialDataBuffers()
+	{
+		materialDataSSBO.clear();
+		materialDataSSBOMemories.clear();
+		materialDataSSBOMapped.clear();
+
+		if (materials.empty())
+			return;
+
+		vk::DeviceSize bufferSize =
+		    sizeof(MaterialData) * std::max<size_t>(1, materials.size());
+
+		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+		{
+			auto [buffer, bufferMem] = createBuffer(bufferSize, vk::BufferUsageFlagBits::eStorageBuffer,
+			                                        vk::MemoryPropertyFlagBits::eHostVisible |
+			                                            vk::MemoryPropertyFlagBits::eHostCoherent);
+
+			materialDataSSBO.emplace_back(std::move(buffer));
+			materialDataSSBOMemories.emplace_back(std::move(bufferMem));
+			materialDataSSBOMapped.emplace_back(
+			    materialDataSSBOMemories[i].mapMemory(0, bufferSize));
+		}
+	}
+
+	void createMeshPrimitiveBuffers()
+	{
+		primitiveDataSSBO.clear();
+		primitiveDataSSBOMemories.clear();
+		primitiveDataSSBOMapped.clear();
+
+		if (primitives.empty())
+			return;
+
+		vk::DeviceSize bufferSize =
+		    sizeof(MeshPrimitive) * primitives.size();
+
+		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+		{
+			auto [buffer, bufferMem] = createBuffer(bufferSize, vk::BufferUsageFlagBits::eStorageBuffer,
+			                                        vk::MemoryPropertyFlagBits::eHostVisible |
+			                                            vk::MemoryPropertyFlagBits::eHostCoherent);
+
+			primitiveDataSSBO.emplace_back(std::move(buffer));
+			primitiveDataSSBOMemories.emplace_back(std::move(bufferMem));
+			primitiveDataSSBOMapped.emplace_back(
+			    primitiveDataSSBOMemories[i].mapMemory(0, bufferSize));
+		}
+	}
+
+	uint32_t createDefaultMaterial()
+	{
+		MaterialData material{};
+		material.baseColorFactor = glm::vec4(1, 0, 1, 1);
+		material.metallicFactor  = 0.0f;
+		material.roughnessFactor = 1.0f;
+		material.alphaCutoff     = 0.5f;
+		material.flags           = 0;
+
+		material.baseColorTextureIndex         = -1;
+		material.baseColorSamplerIndex         = -1;
+		material.normalTextureIndex            = -1;
+		material.normalSamplerIndex            = -1;
+		material.metallicRoughnessTextureIndex = -1;
+		material.metallicRoughnessSamplerIndex = -1;
+		material.emissiveTextureIndex          = -1;
+		material.emissiveSamplerIndex          = -1;
+
+		materials.push_back(material);
+		return 0;
+	}
+
 	void createDescriptorPool()
 	{
-		uint32_t descriptorCount =
-		    static_cast<uint32_t>(renderObjects.size()) * MAX_FRAMES_IN_FLIGHT;
+		uint32_t descriptorCount = MAX_FRAMES_IN_FLIGHT;
 
 		if (descriptorCount == 0)
 		{
@@ -1085,13 +1279,15 @@ struct VulkanRendererBackend::Impl
 			return;
 		}
 
-		std::array<vk::DescriptorPoolSize, 3> poolSize{
+		std::array<vk::DescriptorPoolSize, 4> poolSize{
 		    {{.type            = vk::DescriptorType::eUniformBuffer,
 		      .descriptorCount = descriptorCount},
 		     {.type            = vk::DescriptorType::eStorageBuffer,
-		      .descriptorCount = descriptorCount},
-		     {.type            = vk::DescriptorType::eCombinedImageSampler,
-		      .descriptorCount = descriptorCount}}};
+		      .descriptorCount = descriptorCount * 4},
+		     {.type            = vk::DescriptorType::eSampledImage,
+		      .descriptorCount = static_cast<uint32_t>(MaxBindlessTextures) * MAX_FRAMES_IN_FLIGHT},
+		     {.type            = vk::DescriptorType::eSampler,
+		      .descriptorCount = static_cast<uint32_t>(MaxBindlessSamplers) * MAX_FRAMES_IN_FLIGHT}}};
 		vk::DescriptorPoolCreateInfo poolInfo{.flags =
 		                                          vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
 		                                      .maxSets       = descriptorCount,
@@ -1103,51 +1299,140 @@ struct VulkanRendererBackend::Impl
 
 	void createDescriptorSets()
 	{
-		for (auto &renderObject : renderObjects)
+		//  binding 0 = FrameDataUBO
+		//  binding 1 = ObjectData SSBO
+		//  binding 2 = MaterialData SSBO
+		//  binding 3 = MeshPrimitive SSBO
+		//  binding 4 = DrawData SSBO
+		//  binding 5 = textures[]
+		//  binding 6 = samplers[]
+
+		std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, *descriptorSetLayout);
+		vk::DescriptorSetAllocateInfo        allocInfo{.descriptorPool = descriptorPool,
+		                                               .descriptorSetCount =
+		                                                   static_cast<uint32_t>(layouts.size()),
+		                                               .pSetLayouts = layouts.data()};
+
+		frameDescriptorSets.clear();
+		frameDescriptorSets = device.allocateDescriptorSets(allocInfo);
+
+		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{
-			std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, *descriptorSetLayout);
-			vk::DescriptorSetAllocateInfo        allocInfo{.descriptorPool = descriptorPool,
-			                                               .descriptorSetCount =
-			                                                   static_cast<uint32_t>(layouts.size()),
-			                                               .pSetLayouts = layouts.data()};
+			vk::DescriptorBufferInfo frameDataBufferInfo{.buffer = *frameDataUBOs[i],
+			                                             .offset = 0,
+			                                             .range  = sizeof(FrameDataUBO)};
+			vk::DescriptorBufferInfo objectDataInfo{.buffer = *objectDataSSBO[i],
+			                                        .offset = 0,
+			                                        .range  = sizeof(ObjectData) * renderObjects.size()};
+			vk::DescriptorBufferInfo materialDataSSBOInfo{.buffer = *materialDataSSBO[i],
+			                                              .offset = 0,
+			                                              .range  = sizeof(MaterialData) * materials.size()};
+			vk::DescriptorBufferInfo primitiveDataSSBOInfo{.buffer = *primitiveDataSSBO[i],
+			                                               .offset = 0,
+			                                               .range  = sizeof(MeshPrimitive) * primitives.size()};
+			vk::DescriptorBufferInfo drawDataSSBOInfo{.buffer = *drawDataSSBO[i],
+			                                          .offset = 0,
+			                                          .range  = sizeof(DrawData) * draws.size()};
 
-			renderObject.descriptorSets.clear();
-			renderObject.descriptorSets = device.allocateDescriptorSets(allocInfo);
+			std::vector<vk::DescriptorImageInfo> textureInfos;
+			textureInfos.reserve(MaxBindlessTextures);
 
-			for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+			for (const auto &texture : gpuTextures)
 			{
-				vk::DescriptorBufferInfo frameDataBufferInfo{.buffer = *frameDataUBOs[i],
-				                                             .offset = 0,
-				                                             .range  = sizeof(FrameDataUBO)};
-				vk::DescriptorBufferInfo bufferInfo{.buffer = *objectDataSSBO[i],
-				                                    .offset = 0,
-				                                    .range  = sizeof(ObjectData) * renderObjects.size()};
-				vk::DescriptorImageInfo  imageInfo{.sampler     = textureSampler,
-				                                   .imageView   = textureImageView,
-				                                   .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
-
-				std::array<vk::WriteDescriptorSet, 3> descriptorWrites{
-				    {{.dstSet          = *renderObject.descriptorSets[i],
-				      .dstBinding      = 0,
-				      .dstArrayElement = 0,
-				      .descriptorCount = 1,
-				      .descriptorType  = vk::DescriptorType::eUniformBuffer,
-				      .pBufferInfo     = &frameDataBufferInfo},
-				     {.dstSet          = *renderObject.descriptorSets[i],
-				      .dstBinding      = 1,
-				      .dstArrayElement = 0,
-				      .descriptorCount = 1,
-				      .descriptorType  = vk::DescriptorType::eStorageBuffer,
-				      .pBufferInfo     = &bufferInfo},
-				     {.dstSet          = *renderObject.descriptorSets[i],
-				      .dstBinding      = 2,
-				      .dstArrayElement = 0,
-				      .descriptorCount = 1,
-				      .descriptorType  = vk::DescriptorType::eCombinedImageSampler,
-				      .pImageInfo      = &imageInfo}}};
-				device.updateDescriptorSets(descriptorWrites, {});
+				textureInfos.push_back({
+				    .sampler     = nullptr,        // ignored for eSampledImage
+				    .imageView   = *texture.imageView,
+				    .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+				});
 			}
+
+			std::vector<vk::DescriptorImageInfo> samplerInfos;
+			samplerInfos.reserve(MaxBindlessSamplers);
+
+			for (const auto &sampler : samplers)
+			{
+				samplerInfos.push_back({
+				    .sampler     = *sampler,
+				    .imageView   = nullptr,                            // ignored for eSampler
+				    .imageLayout = vk::ImageLayout::eUndefined,        // ignored for eSampler
+				});
+			}
+
+			std::vector<vk::WriteDescriptorSet> descriptorWrites;
+			descriptorWrites.push_back({.dstSet          = *frameDescriptorSets[i],
+			                            .dstBinding      = 0,
+			                            .dstArrayElement = 0,
+			                            .descriptorCount = 1,
+			                            .descriptorType  = vk::DescriptorType::eUniformBuffer,
+			                            .pBufferInfo     = &frameDataBufferInfo});
+			descriptorWrites.push_back({.dstSet          = *frameDescriptorSets[i],
+			                            .dstBinding      = 1,
+			                            .dstArrayElement = 0,
+			                            .descriptorCount = 1,
+			                            .descriptorType  = vk::DescriptorType::eStorageBuffer,
+			                            .pBufferInfo     = &objectDataInfo});
+
+			descriptorWrites.push_back({.dstSet          = *frameDescriptorSets[i],
+			                            .dstBinding      = 2,
+			                            .dstArrayElement = 0,
+			                            .descriptorCount = 1,
+			                            .descriptorType  = vk::DescriptorType::eStorageBuffer,
+			                            .pBufferInfo     = &materialDataSSBOInfo});
+			descriptorWrites.push_back({.dstSet          = *frameDescriptorSets[i],
+			                            .dstBinding      = 3,
+			                            .dstArrayElement = 0,
+			                            .descriptorCount = 1,
+			                            .descriptorType  = vk::DescriptorType::eStorageBuffer,
+			                            .pBufferInfo     = &primitiveDataSSBOInfo});
+			descriptorWrites.push_back({.dstSet          = *frameDescriptorSets[i],
+			                            .dstBinding      = 4,
+			                            .dstArrayElement = 0,
+			                            .descriptorCount = 1,
+			                            .descriptorType  = vk::DescriptorType::eStorageBuffer,
+			                            .pBufferInfo     = &drawDataSSBOInfo});
+
+			if (!textureInfos.empty())
+			{
+				descriptorWrites.push_back({
+				    .dstSet          = *frameDescriptorSets[i],
+				    .dstBinding      = 5,
+				    .dstArrayElement = 0,
+				    .descriptorCount = static_cast<uint32_t>(textureInfos.size()),
+				    .descriptorType  = vk::DescriptorType::eSampledImage,
+				    .pImageInfo      = textureInfos.data(),
+				});
+			}
+
+			if (!samplerInfos.empty())
+			{
+				descriptorWrites.push_back({
+				    .dstSet          = *frameDescriptorSets[i],
+				    .dstBinding      = 6,
+				    .dstArrayElement = 0,
+				    .descriptorCount = static_cast<uint32_t>(samplerInfos.size()),
+				    .descriptorType  = vk::DescriptorType::eSampler,
+				    .pImageInfo      = samplerInfos.data(),
+				});
+			}
+
+			device.updateDescriptorSets(descriptorWrites, {});
 		}
+	}
+
+	uint32_t getDefaultSamplerIndex()
+	{
+		if (defaultSamplerIndex != UINT32_MAX)
+			return defaultSamplerIndex;
+
+		Core::ImportedSampler sampler{};
+		sampler.magFilter = -1;
+		sampler.minFilter = -1;
+		sampler.wrapS     = TINYGLTF_TEXTURE_WRAP_REPEAT;
+		sampler.wrapT     = TINYGLTF_TEXTURE_WRAP_REPEAT;
+
+		defaultSamplerIndex = static_cast<uint32_t>(samplers.size());
+		samplers.push_back(createGpuSamplerFromImportedSampler(sampler));
+		return defaultSamplerIndex;
 	}
 
 	std::pair<vk::raii::Image, vk::raii::DeviceMemory>
@@ -1229,50 +1514,276 @@ struct VulkanRendererBackend::Impl
 		commandBuffer.copyBufferToImage(buffer, image, vk::ImageLayout::eTransferDstOptimal, region);
 	}
 
-	void createTextureImage()
+	TextureHandle createTextureImage(Anjean::Core::TexturePacket &texturePacket)
 	{
-		ktxTexture    *kTexture;
-		KTX_error_code result = ktxTexture_CreateFromNamedFile(
-		    TEXTURE_PATH.c_str(),
-		    KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
-		    &kTexture);
+		uint32_t textureIndex = static_cast<uint32_t>(gpuTextures.size());
 
-		if (result != KTX_SUCCESS)
-		{
-			throw std::runtime_error("failed to load ktx texture image!");
-		}
-
-		// Get texture dimensions and data
-		uint32_t     texWidth       = kTexture->baseWidth;
-		uint32_t     texHeight      = kTexture->baseHeight;
-		ktx_size_t   imageSize      = ktxTexture_GetImageSize(kTexture, 0);
-		ktx_uint8_t *ktxTextureData = ktxTexture_GetData(kTexture);
+		GpuTexture texture{};
+		texture.format    = vk::Format::eR8G8B8A8Unorm;
+		texture.width     = texturePacket.texWidth;
+		texture.height    = texturePacket.texHeight;
+		texture.mipLevels = 1;
 
 		auto [stagingBuffer, stagingBufferMemory] = createBuffer(
-		    imageSize, vk::BufferUsageFlagBits::eTransferSrc,
+		    texturePacket.imageSize, vk::BufferUsageFlagBits::eTransferSrc,
 		    vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-		void *data = stagingBufferMemory.mapMemory(0, imageSize);
-		memcpy(data, ktxTextureData, imageSize);
+		void *data = stagingBufferMemory.mapMemory(0, texturePacket.imageSize);
+		memcpy(data, texturePacket.ktxTextureData, texturePacket.imageSize);
 		stagingBufferMemory.unmapMemory();
 
-		vk::Format textureFormat = vk::Format::eR8G8B8A8Srgb;        // Default format, should be determined from KTX metadata
-
-		std::tie(textureImage, textureImageMemory) =
-		    createImage(texWidth, texHeight, textureFormat, vk::ImageTiling::eOptimal,
+		std::tie(texture.image, texture.memory) =
+		    createImage(texture.width, texture.height, texture.format, vk::ImageTiling::eOptimal,
 		                vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
 		                vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 		vk::raii::CommandBuffer commandBuffer = beginSingleTimeCommands();
-		transitionImageLayout(commandBuffer, textureImage, vk::ImageLayout::eUndefined,
+		transitionImageLayout(commandBuffer, texture.image, vk::ImageLayout::eUndefined,
 		                      vk::ImageLayout::eTransferDstOptimal);
-		copyBufferToImage(commandBuffer, stagingBuffer, textureImage, static_cast<uint32_t>(texWidth),
-		                  static_cast<uint32_t>(texHeight));
+		copyBufferToImage(commandBuffer, stagingBuffer, texture.image, static_cast<uint32_t>(texture.width),
+		                  static_cast<uint32_t>(texture.height));
 
-		transitionImageLayout(commandBuffer, textureImage, vk::ImageLayout::eTransferDstOptimal,
+		transitionImageLayout(commandBuffer, texture.image, vk::ImageLayout::eTransferDstOptimal,
 		                      vk::ImageLayout::eShaderReadOnlyOptimal);
-		ktxTexture_Destroy(kTexture);
+
 		endSingleTimeCommands(std::move(commandBuffer));
+
+		texture.imageView = createImageView(
+		    *texture.image,
+		    texture.format,
+		    vk::ImageAspectFlagBits::eColor);
+
+		gpuTextures.push_back(std::move(texture));
+
+		return TextureHandle{textureIndex};
+	}
+
+	GpuTexture createGpuTextureFromImportedImage(const Core::ImportedTexture &image, vk::Format format)
+	{
+		GpuTexture texture{};
+		texture.width     = static_cast<uint32_t>(image.width);
+		texture.height    = static_cast<uint32_t>(image.height);
+		texture.mipLevels = 1;
+		texture.format    = format;
+
+		std::vector<uint8_t> rgba = convertToRgba8(image.bytes, image.channels);
+
+		auto [stagingBuffer, stagingMemory] = createBuffer(
+		    rgba.size(),
+		    vk::BufferUsageFlagBits::eTransferSrc,
+		    vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+		void *data = stagingMemory.mapMemory(0, rgba.size());
+		std::memcpy(data, rgba.data(), rgba.size());
+		stagingMemory.unmapMemory();
+
+		std::tie(texture.image, texture.memory) =
+		    createImage(
+		        texture.width,
+		        texture.height,
+		        texture.format,
+		        vk::ImageTiling::eOptimal,
+		        vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+		        vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+		auto commandBuffer = beginSingleTimeCommands();
+
+		transitionImageLayout(commandBuffer, texture.image,
+		                      vk::ImageLayout::eUndefined,
+		                      vk::ImageLayout::eTransferDstOptimal);
+
+		copyBufferToImage(commandBuffer, stagingBuffer, texture.image, texture.width, texture.height);
+
+		transitionImageLayout(commandBuffer, texture.image,
+		                      vk::ImageLayout::eTransferDstOptimal,
+		                      vk::ImageLayout::eShaderReadOnlyOptimal);
+
+		endSingleTimeCommands(std::move(commandBuffer));
+
+		texture.imageView = createImageView(*texture.image, texture.format, vk::ImageAspectFlagBits::eColor);
+
+		return texture;
+	}
+
+	int32_t queueGpuTextureUpload(const Core::ImportedTexture &image, vk::Format format)
+	{
+		GpuTexture texture{};
+		texture.width     = static_cast<uint32_t>(image.width);
+		texture.height    = static_cast<uint32_t>(image.height);
+		texture.mipLevels = 1;
+		texture.format    = format;
+
+		std::vector<uint8_t> rgba = convertToRgba8(image.bytes, image.channels);
+
+		auto [stagingBuffer, stagingMemory] = createBuffer(
+		    rgba.size(),
+		    vk::BufferUsageFlagBits::eTransferSrc,
+		    vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+		void *data = stagingMemory.mapMemory(0, rgba.size());
+		std::memcpy(data, rgba.data(), rgba.size());
+		stagingMemory.unmapMemory();
+
+		std::tie(texture.image, texture.memory) =
+		    createImage(
+		        texture.width,
+		        texture.height,
+		        texture.format,
+		        vk::ImageTiling::eOptimal,
+		        vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+		        vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+		texture.imageView =
+		    createImageView(*texture.image, texture.format, vk::ImageAspectFlagBits::eColor);
+
+		uint32_t textureIndex = static_cast<uint32_t>(gpuTextures.size());
+		gpuTextures.push_back(std::move(texture));
+
+		pendingTextureUploads.push_back({
+		    .textureIndex  = textureIndex,
+		    .stagingBuffer = std::move(stagingBuffer),
+		    .stagingMemory = std::move(stagingMemory),
+		    .width         = static_cast<uint32_t>(image.width),
+		    .height        = static_cast<uint32_t>(image.height),
+		});
+
+		return static_cast<int32_t>(textureIndex);
+	}
+
+	void flushPendingTextureUploads()
+	{
+		if (pendingTextureUploads.empty())
+			return;
+
+		auto commandBuffer = beginSingleTimeCommands();
+
+		for (auto &upload : pendingTextureUploads)
+		{
+			GpuTexture &texture = gpuTextures[upload.textureIndex];
+
+			transitionImageLayout(
+			    commandBuffer,
+			    texture.image,
+			    vk::ImageLayout::eUndefined,
+			    vk::ImageLayout::eTransferDstOptimal);
+
+			copyBufferToImage(
+			    commandBuffer,
+			    upload.stagingBuffer,
+			    texture.image,
+			    upload.width,
+			    upload.height);
+
+			transitionImageLayout(
+			    commandBuffer,
+			    texture.image,
+			    vk::ImageLayout::eTransferDstOptimal,
+			    vk::ImageLayout::eShaderReadOnlyOptimal);
+		}
+
+		endSingleTimeCommands(std::move(commandBuffer));
+
+		pendingTextureUploads.clear();
+	}
+
+	static std::vector<uint8_t> convertToRgba8(const std::vector<uint8_t> &src, int channels)
+	{
+		if (channels == 4)
+			return src;
+
+		if (channels <= 0)
+			throw std::runtime_error("Imported texture has invalid channel count.");
+
+		const size_t         pixelCount = src.size() / static_cast<size_t>(channels);
+		std::vector<uint8_t> rgba(pixelCount * 4);
+
+		for (size_t i = 0; i < pixelCount; ++i)
+		{
+			const uint8_t r = src[i * channels + 0];
+			const uint8_t g = channels >= 2 ? src[i * channels + 1] : r;
+			const uint8_t b = channels >= 3 ? src[i * channels + 2] : r;
+			const uint8_t a = channels >= 4 ? src[i * channels + 3] : 255;
+
+			rgba[i * 4 + 0] = r;
+			rgba[i * 4 + 1] = g;
+			rgba[i * 4 + 2] = b;
+			rgba[i * 4 + 3] = a;
+		}
+
+		return rgba;
+	}
+
+	vk::raii::Sampler createGpuSamplerFromImportedSampler(const Core::ImportedSampler &sampler)
+	{
+		auto toFilter = [](int filter) {
+			switch (filter)
+			{
+				case TINYGLTF_TEXTURE_FILTER_NEAREST:
+				case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST:
+				case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR:
+					return vk::Filter::eNearest;
+
+				case TINYGLTF_TEXTURE_FILTER_LINEAR:
+				case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST:
+				case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR:
+				case -1:
+				default:
+					return vk::Filter::eLinear;
+			}
+		};
+
+		auto toMipmapMode = [](int filter) {
+			switch (filter)
+			{
+				case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST:
+				case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST:
+					return vk::SamplerMipmapMode::eNearest;
+
+				case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR:
+				case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR:
+				case -1:
+				default:
+					return vk::SamplerMipmapMode::eLinear;
+			}
+		};
+
+		auto toAddressMode = [](int wrap) {
+			switch (wrap)
+			{
+				case TINYGLTF_TEXTURE_WRAP_CLAMP_TO_EDGE:
+					return vk::SamplerAddressMode::eClampToEdge;
+
+				case TINYGLTF_TEXTURE_WRAP_MIRRORED_REPEAT:
+					return vk::SamplerAddressMode::eMirroredRepeat;
+
+				case TINYGLTF_TEXTURE_WRAP_REPEAT:
+				case -1:
+				default:
+					return vk::SamplerAddressMode::eRepeat;
+			}
+		};
+
+		vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
+
+		vk::SamplerCreateInfo samplerInfo{
+		    .magFilter               = toFilter(sampler.magFilter),
+		    .minFilter               = toFilter(sampler.minFilter),
+		    .mipmapMode              = toMipmapMode(sampler.minFilter),
+		    .addressModeU            = toAddressMode(sampler.wrapS),
+		    .addressModeV            = toAddressMode(sampler.wrapT),
+		    .addressModeW            = vk::SamplerAddressMode::eRepeat,
+		    .mipLodBias              = 0.0f,
+		    .anisotropyEnable        = vk::True,
+		    .maxAnisotropy           = properties.limits.maxSamplerAnisotropy,
+		    .compareEnable           = vk::False,
+		    .compareOp               = vk::CompareOp::eAlways,
+		    .minLod                  = 0.0f,
+		    .maxLod                  = 0.0f,
+		    .borderColor             = vk::BorderColor::eIntOpaqueBlack,
+		    .unnormalizedCoordinates = vk::False,
+		};
+
+		return vk::raii::Sampler(device, samplerInfo);
 	}
 
 	vk::raii::ImageView createImageView(const vk::Image &image, vk::Format format,
@@ -1299,12 +1810,6 @@ struct VulkanRendererBackend::Impl
 			swapChainImageViews.emplace_back(
 			    createImageView(image, swapChainSurfaceFormat.format, vk::ImageAspectFlagBits::eColor));
 		}
-	}
-
-	void createTextureImageView()
-	{
-		textureImageView =
-		    createImageView(*textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
 	}
 
 	void createDepthResources()
@@ -1339,8 +1844,10 @@ struct VulkanRendererBackend::Impl
 		createDepthResources();
 	}
 
-	void createTextureSampler()
+	uint32_t createTextureSampler()
 	{
+		uint32_t samplerIndex = static_cast<uint32_t>(samplers.size());
+
 		vk::PhysicalDeviceProperties properties = physicalDevice.getProperties();
 		vk::SamplerCreateInfo        samplerInfo{.magFilter        = vk::Filter::eLinear,
 		                                         .minFilter        = vk::Filter::eLinear,
@@ -1358,58 +1865,90 @@ struct VulkanRendererBackend::Impl
 		samplerInfo.minLod                  = 0.0f;
 		samplerInfo.maxLod                  = 0.0f;
 
-		textureSampler = vk::raii::Sampler(device, samplerInfo);
+		samplers.push_back(std::move(vk::raii::Sampler(device, samplerInfo)));
+
+		return samplerIndex;
 	}
 
 	bool needsRenderObjectRebuild(std::span<const Anjean::Core::RenderPacket> packets)
 	{
-		if (renderObjects.size() != packets.size())
-			return true;
+		return true;
 
-		for (size_t i = 0; i < packets.size(); ++i)
-		{
-			if (renderObjects[i].objectId != packets[i].objectId)
-				return true;
+		// if (renderObjects.size() != packets.size())
+		// 	return true;
 
-			if (renderObjects[i].meshId != packets[i].meshId)
-				return true;
-		}
+		// for (size_t i = 0; i < packets.size(); ++i)
+		// {
+		// 	if (renderObjects[i].objectId != packets[i].objectId)
+		// 		return true;
 
-		return false;
+		// 	if (renderObjects[i].meshId != packets[i].meshId)
+		// 		return true;
+		// }
+
+		// return false;
 	}
 
-	void rebuildRenderObjects(std::span<const Anjean::Core::RenderPacket> packets)
+	void rebuildRenderObjects(std::span<const Core::RenderPacket> packets)
 	{
 		device.waitIdle();
 
 		cleanupObjectUniformsAndDescriptors();
+
 		renderObjects.clear();
+		draws.clear();
 
 		renderObjects.reserve(packets.size());
 
 		for (const auto &packet : packets)
 		{
-			if (!gpuMeshes.contains(packet.meshId))
-			{
+			auto modelIt = modelIdToModelAssetIndex.find(packet.meshId);
+			if (modelIt == modelIdToModelAssetIndex.end())
 				continue;
+
+			const ModelAsset &modelAsset = modelAssets[modelIt->second];
+
+			for (uint32_t n = 0; n < modelAsset.nodeCount; ++n)
+			{
+				const ModelNodeAsset &node = modelNodeAssets[modelAsset.firstNode + n];
+				const MeshAsset      &mesh = meshes[node.meshIndex];
+
+				uint32_t objectIndex = static_cast<uint32_t>(renderObjects.size());
+
+				RenderObject object{};
+				object.objectId      = packet.objectId;
+				object.meshId        = packet.meshId;
+				object.position      = packet.position;
+				object.rotation      = packet.rotation;
+				object.scale         = packet.scale;
+				object.nodeTransform = node.transform;
+
+				for (uint32_t i = 0; i < mesh.meshPrimitiveAssetCount; ++i)
+				{
+					const MeshPrimitiveAsset &meshPrimitiveAsset =
+					    meshPrimitiveAssets[mesh.firstMeshPrimitiveAsset + i];
+
+					DrawData draw{};
+					draw.objectIndex    = objectIndex;
+					draw.primitiveIndex = meshPrimitiveAsset.primitiveIndex;
+					draw.materialIndex  = meshPrimitiveAsset.importedMaterialIndex;
+					draw.pad            = 0;
+
+					draws.push_back(draw);
+				}
+
+				renderObjects.push_back(object);
 			}
-
-			RenderObject object{};
-			object.objectId = packet.objectId;
-			object.meshId   = packet.meshId;
-			object.position = packet.position;
-			object.rotation = packet.rotation;
-			object.scale    = packet.scale;
-
-			renderObjects.push_back(std::move(object));
 		}
 
-		if (renderObjects.empty())
-		{
+		if (renderObjects.empty() || draws.empty() || primitives.empty() || materials.empty())
 			return;
-		}
 
 		createObjectDataBuffers();
+		createDrawDataBuffers();
+		createMeshPrimitiveBuffers();
+		createMaterialDataBuffers();
+
 		createDescriptorPool();
 		createDescriptorSets();
 	}
@@ -1433,10 +1972,7 @@ struct VulkanRendererBackend::Impl
 
 	void cleanupObjectUniformsAndDescriptors()
 	{
-		for (auto &renderObject : renderObjects)
-		{
-			renderObject.descriptorSets.clear();
-		}
+		frameDescriptorSets.clear();
 
 		descriptorPool = nullptr;
 	}
@@ -1467,6 +2003,81 @@ struct VulkanRendererBackend::Impl
 		    sizeof(ObjectData) * objectData.size());
 	}
 
+	void updateMeshPrimitiveSSBO(uint32_t currentFrame)
+	{
+		if (primitives.empty())
+		{
+			return;
+		}
+
+		if (primitiveDataSSBOMapped.size() <= currentFrame || primitiveDataSSBOMapped[currentFrame] == nullptr)
+		{
+			throw std::runtime_error("MeshPrimitive SSBO is not initialized for current frame.");
+		}
+
+		std::vector<MeshPrimitive> primitiveData(primitives.size());
+
+		for (size_t i = 0; i < primitives.size(); ++i)
+		{
+			primitiveData[i] = primitives[i];
+		}
+
+		std::memcpy(
+		    primitiveDataSSBOMapped[currentFrame],
+		    primitiveData.data(),
+		    sizeof(MeshPrimitive) * primitiveData.size());
+	}
+
+	void updateMaterialDataSSBO(uint32_t currentFrame)
+	{
+		if (materials.empty())
+		{
+			return;
+		}
+
+		if (materialDataSSBOMapped.size() <= currentFrame || materialDataSSBOMapped[currentFrame] == nullptr)
+		{
+			throw std::runtime_error("MaterialData SSBO is not initialized for current frame.");
+		}
+
+		std::vector<MaterialData> materialData(materials.size());
+
+		for (size_t i = 0; i < materials.size(); ++i)
+		{
+			materialData[i] = materials[i];
+		}
+
+		std::memcpy(
+		    materialDataSSBOMapped[currentFrame],
+		    materialData.data(),
+		    sizeof(MaterialData) * materialData.size());
+	}
+
+	void updateDrawDataSSBO(uint32_t currentFrame)
+	{
+		if (draws.empty())
+		{
+			return;
+		}
+
+		if (drawDataSSBOMapped.size() <= currentFrame || drawDataSSBOMapped[currentFrame] == nullptr)
+		{
+			throw std::runtime_error("DrawData SSBO is not initialized for current frame.");
+		}
+
+		std::vector<DrawData> drawData(draws.size());
+
+		for (size_t i = 0; i < draws.size(); ++i)
+		{
+			drawData[i] = draws[i];
+		}
+
+		std::memcpy(
+		    drawDataSSBOMapped[currentFrame],
+		    drawData.data(),
+		    sizeof(DrawData) * drawData.size());
+	}
+
 	void initVulkan()
 	{
 		createInstance();
@@ -1482,10 +2093,7 @@ struct VulkanRendererBackend::Impl
 		createCommandPool();
 		createDepthResources();
 
-		createTextureImage();
-		createTextureImageView();
-		createTextureSampler();
-
+		defaultMaterialIndex = createDefaultMaterial();
 		createFrameDataUBOs();
 
 		createCommandBuffers();
@@ -1519,7 +2127,14 @@ struct VulkanRendererBackend::Impl
 		device.resetFences(*inFlightFences[frameIndex]);
 
 		updateFrameDataUBOs(frameIndex);
-		updateObjectDataSSBO(frameIndex);
+
+		if (!draws.empty())
+		{
+			updateObjectDataSSBO(frameIndex);
+			updateMeshPrimitiveSSBO(frameIndex);
+			updateMaterialDataSSBO(frameIndex);
+			updateDrawDataSSBO(frameIndex);
+		}
 
 		commandBuffers[frameIndex].reset();
 		recordCommandBuffer(imageIndex);
@@ -1567,93 +2182,209 @@ struct VulkanRendererBackend::Impl
 		// SDL_Quit();
 	}
 
-	void uploadMeshToGPU(const Anjean::Core::MeshData &meshData)
+	void uploadMaterialToGPU(const Anjean::Core::MeshData &meshData)
 	{
-		std::vector<Vertex> vertices;
-		vertices.reserve(meshData.vertices.size());
-
-		for (const auto &v : meshData.vertices)
-		{
-			Vertex vertex{};
-
-			vertex.pos = {
-			    v.position.x,
-			    v.position.y,
-			    v.position.z};
-
-			vertex.texCoord = {
-			    v.uv.x,
-			    v.uv.y};
-
-			vertex.normal = {0.0f, 0.0f, 1.0f};        // temporary until Core::MeshVertex has normals
-			vertex.color  = {1.0f, 1.0f, 1.0f};
-
-			vertices.push_back(vertex);
-		}
-
-		const auto &indices = meshData.indices;
-
-		GpuMesh gpuMesh{};
-		gpuMesh.id          = meshData.id;
-		gpuMesh.indexCount  = static_cast<uint32_t>(indices.size());
-		gpuMesh.vertexCount = static_cast<uint32_t>(vertices.size());
-
-		createVertexBufferForMesh(vertices, gpuMesh);
-		createIndexBufferForMesh(indices, gpuMesh);
-
-		gpuMeshes[meshData.id] = std::move(gpuMesh);
+		// ??
 	}
 
-	void createVertexBufferForMesh(const std::vector<Vertex> &vertices, GpuMesh &mesh)
+	struct MeshGpuHandle
 	{
-		vk::DeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+		uint32_t meshIndex;
+	};
 
-		auto [stagingBuffer, stagingBufferMemory] = createBuffer(
-		    bufferSize,
-		    vk::BufferUsageFlagBits::eTransferSrc,
-		    vk::MemoryPropertyFlagBits::eHostVisible |
-		        vk::MemoryPropertyFlagBits::eHostCoherent);
-
-		void *data = stagingBufferMemory.mapMemory(0, bufferSize);
-		memcpy(data, vertices.data(), static_cast<size_t>(bufferSize));
-		stagingBufferMemory.unmapMemory();
-
-		std::tie(mesh.vertexBuffer, mesh.vertexBufferMemory) = createBuffer(
-		    bufferSize,
-		    vk::BufferUsageFlagBits::eVertexBuffer |
-		        vk::BufferUsageFlagBits::eTransferDst,
-		    vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-		copyBuffer(stagingBuffer, mesh.vertexBuffer, bufferSize);
-	}
-
-	void createIndexBufferForMesh(const std::vector<uint32_t> &indices, GpuMesh &mesh)
+	void rebuildSceneGeometryBuffers()
 	{
-		if (indices.empty())
+		if (!cpuVertices.empty())
 		{
-			mesh.indexCount = 0;
-			return;
+			vk::DeviceSize size = sizeof(Vertex) * cpuVertices.size();
+
+			auto [buffer, memory] = createBuffer(
+			    size,
+			    vk::BufferUsageFlagBits::eVertexBuffer,
+			    vk::MemoryPropertyFlagBits::eHostVisible |
+			        vk::MemoryPropertyFlagBits::eHostCoherent);
+
+			void *data = memory.mapMemory(0, size);
+			std::memcpy(data, cpuVertices.data(), size);
+			memory.unmapMemory();
+
+			sceneVertexBuffer       = std::move(buffer);
+			sceneVertexBufferMemory = std::move(memory);
 		}
 
-		vk::DeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+		if (!cpuIndices.empty())
+		{
+			vk::DeviceSize size = sizeof(uint32_t) * cpuIndices.size();
 
-		auto [stagingBuffer, stagingBufferMemory] = createBuffer(
-		    bufferSize,
-		    vk::BufferUsageFlagBits::eTransferSrc,
-		    vk::MemoryPropertyFlagBits::eHostVisible |
-		        vk::MemoryPropertyFlagBits::eHostCoherent);
+			auto [buffer, memory] = createBuffer(
+			    size,
+			    vk::BufferUsageFlagBits::eIndexBuffer,
+			    vk::MemoryPropertyFlagBits::eHostVisible |
+			        vk::MemoryPropertyFlagBits::eHostCoherent);
 
-		void *data = stagingBufferMemory.mapMemory(0, bufferSize);
-		memcpy(data, indices.data(), static_cast<size_t>(bufferSize));
-		stagingBufferMemory.unmapMemory();
+			void *data = memory.mapMemory(0, size);
+			std::memcpy(data, cpuIndices.data(), size);
+			memory.unmapMemory();
 
-		std::tie(mesh.indexBuffer, mesh.indexBufferMemory) = createBuffer(
-		    bufferSize,
-		    vk::BufferUsageFlagBits::eIndexBuffer |
-		        vk::BufferUsageFlagBits::eTransferDst,
-		    vk::MemoryPropertyFlagBits::eDeviceLocal);
+			sceneIndexBuffer       = std::move(buffer);
+			sceneIndexBufferMemory = std::move(memory);
+		}
+	}
 
-		copyBuffer(stagingBuffer, mesh.indexBuffer, bufferSize);
+	void uploadModelToGPU(std::span<const Core::ImportedModel *const> models)
+	{
+		for (const Core::ImportedModel *modelPtr : models)
+		{
+			const Core::ImportedModel &model = *modelPtr;
+
+			if (modelIdToModelAssetIndex.contains(model.id))
+				continue;
+
+			uint32_t vertexBase             = cpuVertices.size();
+			uint32_t indexBase              = cpuIndices.size();
+			uint32_t primitiveBase          = primitives.size();
+			uint32_t meshPrimitiveAssetBase = meshPrimitiveAssets.size();
+			uint32_t materialBase           = materials.size();
+			uint32_t meshBase               = meshes.size();
+			uint32_t meshIndex              = meshes.size();
+
+			for (auto importedPrimitive : model.primitives)
+			{
+				MeshPrimitive primitive{};
+				primitive.vertexOffset = vertexBase + importedPrimitive.firstVertex;
+				primitive.vertexCount  = importedPrimitive.vertexCount;
+				primitive.indexOffset  = indexBase + importedPrimitive.firstIndex;
+				primitive.indexCount   = importedPrimitive.indexCount;
+
+				primitives.push_back(primitive);
+			}
+
+			for (auto importedMeshPrimitive : model.meshPrimitives)
+			{
+				MeshPrimitiveAsset asset{};
+				asset.primitiveIndex = primitiveBase + importedMeshPrimitive.primitiveIndex;
+				asset.importedMaterialIndex =
+				    importedMeshPrimitive.materialIndex == Core::InvalidImportIndex ? defaultMaterialIndex : materialBase + importedMeshPrimitive.materialIndex;
+
+				meshPrimitiveAssets.push_back(asset);
+			}
+
+			for (auto importedMesh : model.meshes)
+			{
+				MeshAsset mesh{};
+				mesh.firstMeshPrimitiveAsset =
+				    meshPrimitiveAssetBase + importedMesh.firstMeshPrimitive;
+				mesh.meshPrimitiveAssetCount = importedMesh.meshPrimitiveCount;
+
+				meshes.push_back(mesh);
+			}
+
+			uint32_t nodeBase = static_cast<uint32_t>(modelNodeAssets.size());
+
+			for (const auto &node : model.nodes)
+			{
+				if (node.meshIndex == Core::InvalidImportIndex)
+					continue;
+
+				modelNodeAssets.push_back({
+				    .meshIndex = meshBase + node.meshIndex,
+				    .transform = node.transform,
+				});
+			}
+
+			ModelAsset asset{};
+			asset.firstNode = nodeBase;
+			asset.nodeCount = static_cast<uint32_t>(modelNodeAssets.size()) - nodeBase;
+
+			uint32_t modelAssetIndex = static_cast<uint32_t>(modelAssets.size());
+			modelAssets.push_back(asset);
+
+			modelIdToModelAssetIndex[model.id] = modelAssetIndex;
+
+			for (const auto &v : model.vertices)
+			{
+				Vertex vertex{};
+				vertex.pos      = {v.position.x, v.position.y, v.position.z};
+				vertex.texCoord = {v.uv.x, v.uv.y};
+				vertex.normal   = {v.normal.x, v.normal.y, v.normal.z};
+				vertex.color    = {1.0f, 1.0f, 1.0f};
+				cpuVertices.push_back(vertex);
+			}
+
+			uint32_t samplerBase = static_cast<uint32_t>(samplers.size());
+
+			for (const auto &sampler : model.samplers)
+			{
+				samplers.push_back(createGpuSamplerFromImportedSampler(sampler));
+			}
+
+			std::map<std::pair<uint32_t, vk::Format>, int32_t> uploadedTextures;
+
+			auto uploadTexture = [&](uint32_t imageIndex, vk::Format format) -> int32_t {
+				if (imageIndex == Core::InvalidImportIndex)
+					return -1;
+
+				auto key = std::pair{imageIndex, format};
+				if (auto it = uploadedTextures.find(key); it != uploadedTextures.end())
+					return it->second;
+
+				int32_t gpuIndex = queueGpuTextureUpload(model.textures[imageIndex], format);
+				uploadedTextures.emplace(key, gpuIndex);
+				return gpuIndex;
+			};
+
+			auto resolveSampler = [&](uint32_t textureIndex, uint32_t samplerIndex) -> int32_t {
+				if (textureIndex == Core::InvalidImportIndex)
+					return -1;
+
+				if (samplerIndex == Core::InvalidImportIndex)
+					return static_cast<int32_t>(getDefaultSamplerIndex());
+
+				if (samplerIndex >= model.samplers.size())
+					throw std::runtime_error("Material references sampler index out of range.");
+
+				return static_cast<int32_t>(samplerBase + samplerIndex);
+			};
+
+			for (const auto &m : model.materials)
+			{
+				MaterialData material{};
+				material.baseColorFactor = m.baseColorFactor;
+				material.metallicFactor  = m.metallicFactor;
+				material.roughnessFactor = m.roughnessFactor;
+				material.alphaCutoff     = m.alphaCutoff;
+
+				material.baseColorTextureIndex =
+				    uploadTexture(m.baseColorTextureIndex, vk::Format::eR8G8B8A8Srgb);
+				material.baseColorSamplerIndex =
+				    resolveSampler(m.baseColorTextureIndex, m.baseColorSamplerIndex);
+
+				material.emissiveTextureIndex =
+				    uploadTexture(m.emissiveTextureIndex, vk::Format::eR8G8B8A8Srgb);
+				material.emissiveSamplerIndex =
+				    resolveSampler(m.emissiveTextureIndex, m.emissiveSamplerIndex);
+
+				material.normalTextureIndex =
+				    uploadTexture(m.normalTextureIndex, vk::Format::eR8G8B8A8Unorm);
+				material.normalSamplerIndex =
+				    resolveSampler(m.normalTextureIndex, m.normalSamplerIndex);
+
+				material.metallicRoughnessTextureIndex =
+				    uploadTexture(m.metallicRoughnessTextureIndex, vk::Format::eR8G8B8A8Unorm);
+				material.metallicRoughnessSamplerIndex =
+				    resolveSampler(m.metallicRoughnessTextureIndex, m.metallicRoughnessSamplerIndex);
+
+				materials.push_back(material);
+			}
+
+			cpuIndices.insert(
+			    cpuIndices.end(),
+			    model.indices.begin(),
+			    model.indices.end());
+		}
+
+		flushPendingTextureUploads();
+		rebuildSceneGeometryBuffers();
 	}
 };
 
@@ -1688,14 +2419,9 @@ void VulkanRendererBackend::drawSprite(const PipelineHandle &pPipeline, const Co
                                        const ObjectUniform                &pObjectUniform)
 {}
 
-std::pair<decltype(BufferHandle::id), std::optional<decltype(TextureHandle::id)>>
-    VulkanRendererBackend::loadMeshToGPU(Anjean::Core::MeshData pMesh)
+void VulkanRendererBackend::loadModelToGPU(std::span<const Core::ImportedModel *const> models)
 {
-	m_impl->uploadMeshToGPU(pMesh);
-
-	return {
-	    static_cast<decltype(BufferHandle::id)>(pMesh.id),
-	    std::nullopt};
+	m_impl->uploadModelToGPU(models);
 }
 
 void VulkanRendererBackend::endFrame()

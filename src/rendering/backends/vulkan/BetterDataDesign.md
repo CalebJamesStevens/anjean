@@ -1,0 +1,13 @@
+| PR                                   | Coverage | Goal                                                                                   | Renderer still works by                                   |
+| ------------------------------------ | -------: | -------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| **PR 0, Stabilize current renderer** |      10% | Fix existing correctness issues                                                        | Current textured mesh still draws                         |
+| **PR 1, Persistent scene cache**     |      20% | Stop rebuilding descriptors/UBOs every frame                                           | `setRenderPackets()` only rebuilds when scene changes     |
+| **PR 2, FrameDataUBO**               |      30% | Move camera/time/frame/renderSize into one per-frame UBO                               | Objects still use old per-object UBO model matrix         |
+| **PR 3, ObjectData SSBO**            |      45% | Move model matrices into `objects[]` storage buffer                                    | Shader reads `objects[drawIndex]`                         |
+| **PR 4, DrawData + push constants**  |      60% | Add `draws[]` and push `drawIndex`                                                     | CPU loop pushes index, shader fetches object/material ids |
+| **PR 5, MaterialData SSBO**          |      70% | Add material buffer with base color/metallic/roughness/texture ids                     | Materials come from GPU buffer                            |
+| **PR 6, GeometryData**               |      80% | Add geometry records for index count/offset/material                                   | Draw loop uses `GeometryData`, not ad-hoc mesh fields     |
+| **PR 7, Texture table**              |      90% | Replace one global texture with `textures[]`                                           | glTF-style material texture indices work                  |
+| **PR 8, Renderer API cleanup**       |     100% | Make backend API real: `beginFrame`, `endFrame`, `createBuffer`, `createTexture`, etc. | No empty backend methods remain                           |
+| **PR 9, GPU-driven optional**        |        + | Add `indirectCommands[]`, `visibleDraws[]`                                             | Same renderer path, optional indirect path                |
+| **PR 10, Ray tracing optional**      |        + | Add acceleration structures                                                            | Separate feature, not required for raster renderer        |
