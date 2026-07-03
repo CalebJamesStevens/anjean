@@ -20,8 +20,7 @@ Whether or not the four engines will have applications disconnectected from the 
 in the air, however, care is taken to decrease the coupling between the four as much as possible.
 
 ### Runtime Engine
-The primary language of the Runtime Engine will be C++. An API layer for C# scripts will be created
-to allow for developer defined scripts.
+The primary language of the Runtime Engine will be C++. 
 
 The Runtime Engine itself will be broken down into "mini" engines:
 - Input handling

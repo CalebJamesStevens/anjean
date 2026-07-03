@@ -74,7 +74,6 @@ add_library(anjean_core STATIC
     src/runtime/Runtime.cpp
     src/runtime/objects/NativeMeshes/Mesh.cpp
     src/runtime/input/InputManager.cpp
-    src/runtime/scripting/ScriptingEngine.cpp
 )
 
 set_target_properties(anjean_core PROPERTIES
@@ -97,30 +96,6 @@ target_link_libraries(anjean_core PRIVATE
 
 anjean_apply_debug_settings(anjean_core)
 
-# -----------------------------
-# Native C API for C# P/Invoke
-# Produces: libAnjean.Native.dylib
-# -----------------------------
-
-add_library(anjean_native SHARED
-    src/runtime/scripting/NativeBindings.cpp
-)
-
-set_target_properties(anjean_native PROPERTIES
-    OUTPUT_NAME "Anjean.Native"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
-)
-
-target_include_directories(anjean_native PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-)
-
-target_link_libraries(anjean_native PRIVATE
-    anjean_core
-)
-
-anjean_apply_debug_settings(anjean_native)
 
 # -----------------------------
 # Main executable
@@ -151,34 +126,10 @@ target_include_directories(anjean PRIVATE
 
 target_link_libraries(anjean PRIVATE
     anjean_core
-    anjean_native
     glm::glm
 )
 
 anjean_apply_debug_settings(anjean)
-
-# -----------------------------
-# macOS / .NET host support
-# -----------------------------
-
-if(APPLE)
-    set(ANJEAN_DOTNET_HOST_ARM64
-        /usr/local/share/dotnet/packs/Microsoft.NETCore.App.Host.osx-arm64/8.0.1/runtimes/osx-arm64/native
-    )
-
-    set(ANJEAN_DOTNET_HOST_X64
-        /usr/local/share/dotnet/x64/packs/Microsoft.NETCore.App.Host.osx-x64/8.0.1/runtimes/osx-x64/native
-    )
-
-    target_include_directories(anjean_core PUBLIC
-        ${ANJEAN_DOTNET_HOST_ARM64}
-        ${ANJEAN_DOTNET_HOST_X64}
-    )
-
-    target_link_libraries(anjean_core PUBLIC
-        ${ANJEAN_DOTNET_HOST_ARM64}/libnethost.a
-    )
-endif()
 
 # -----------------------------
 # Metal backend
