@@ -15,7 +15,6 @@
 #include "objects/GameObject.h"
 #include "objects/NativeMeshes/Mesh.h"
 #include "objects/PhysicsBody.h"
-#include "scripting/ScriptingEngine.h"
 
 namespace Anjean::Runtime
 {
@@ -67,7 +66,6 @@ class Runtime
 	std::uint32_t                             nextMeshId          = 1;
 	std::uint32_t                             nextRuntimeObjectId = 1;
 	std::uint32_t                             currentCameraId     = 0;
-	ScriptingEngine                           scriptingEngine;
 	static Coordinator                       *gCoordinator;
 };
 }        // namespace Anjean::Runtime

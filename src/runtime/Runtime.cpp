@@ -1,8 +1,6 @@
 #include "Runtime.h"
 #include "objects/Camera.h"
 #include "objects/GameObject.h"
-#include "scripting/NativeBindings.h"
-#include "scripting/ScriptingEngine.h"
 #include <cstdlib>
 
 namespace Anjean::Runtime
@@ -125,48 +123,12 @@ Runtime *Runtime::GetInstance()
 
 	runtime_->inputManager = InputManager();
 
-	runtime_->scriptingEngine.bindRuntime(runtime_);
-	BindNativeRuntime(runtime_);
-
-	setenv("ANJEAN_NATIVE_LIBRARY", "/Users/caleb/repos/anjean/build/libAnjean.Native.dylib", 1);
-
 	namespace fs = std::filesystem;
 
 	fs::path projectRoot = fs::current_path();
 
-	fs::path anjeanDir = projectRoot / ".anjean";
-	fs::path sdkDir    = anjeanDir / "sdk";
-
-	fs::path runtimeConfig = sdkDir / "Anjean.Scripting.runtimeconfig.json";
-
-	fs::path scriptingDll = sdkDir / "Anjean.Scripting.dll";
-
-	fs::path gameAssembly =
-	    anjeanDir / "bin" / "Debug" / "net8.0" / (projectRoot.filename().string() + ".dll");
-
-	if (!fs::exists(runtimeConfig))
-	{
-		throw std::runtime_error("Missing runtime config: " + runtimeConfig.string());
-	}
-
-	if (!fs::exists(scriptingDll))
-	{
-		throw std::runtime_error("Missing scripting DLL: " + scriptingDll.string());
-	}
-
-	if (!fs::exists(gameAssembly))
-	{
-		throw std::runtime_error("Missing game assembly: " + gameAssembly.string() +
-		                         "\nRun dotnet build first.");
-	}
-
-	runtime_->scriptingEngine.load(runtimeConfig.string(), scriptingDll.string());
-
-	runtime_->scriptingEngine.loadGameAssembly(gameAssembly.string());
-
 	fs::path currentPath = projectRoot;
 
-	runtime_->scriptingEngine.startMainScene();
 	runtime_->GetCoordinator();
 	return runtime_;
 }
@@ -192,11 +154,9 @@ void Runtime::beginTick()
 
 void Runtime::executeTick()
 {
-	scriptingEngine.updateAll();
 }
 void Runtime::executePhysicsTick(float deltaTime)
 {
-	scriptingEngine.physicsUpdateAll(deltaTime);
 }
 
 void Runtime::endTick()

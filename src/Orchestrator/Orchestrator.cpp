@@ -14,7 +14,6 @@
 #include "../runtime/ModelLoader.h"
 #include "../runtime/RenderSystem.h"
 #include "../runtime/Runtime.h"
-#include "../runtime/scripting/NativeBindings.h"
 #include "../window/Window.h"
 #include <ktx.h>
 
